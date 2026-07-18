@@ -54,6 +54,7 @@ export interface EqColumn {
     label: string;
     value: number;      // raw
     peak: number | null;
+    highlight: number | null;   // cross-highlight value from another visual
 }
 
 export interface EqFont {
@@ -81,6 +82,7 @@ export interface EqCtx {
     hcFg: string;
     hcBg: string;
     columns: EqColumn[];
+    highlightActive: boolean;   // a cross-highlight is in play (dim + relight)
     rows: number;
     mode: string;           // byValue | spectrum
     showPeaks: boolean;
@@ -176,14 +178,22 @@ export function renderEqualiser(ctx: EqCtx): void {
         const lit = Math.round(v * rows);
         const colc = ctx.mode === "spectrum" ? ramp(t.stops, n === 1 ? 0 : i / (n - 1)) : null;
 
+        // Cross-highlight (native-bar semantics): the full level dims to a
+        // ghost, blocks up to the highlighted value stay fully lit.
+        const litHi = ctx.highlightActive
+            ? Math.round(Math.max(0, Math.min((col.highlight ?? 0) / max, 1)) * rows)
+            : null;
+
         const colG = g.append("g").node() as SVGGElement;
         const cg = select(colG);
 
         for (let r = 0; r < rows; r++) {
             const on = r < lit;
+            const ghost = on && litHi != null && r >= litHi;
             cg.append("rect")
                 .attr("x", x + bx).attr("y", yOf(r)).attr("width", bw).attr("height", h).attr("rx", 2)
                 .attr("fill", hc ? (on ? fg : "none") : (on ? (colc || bandOf(r)) : t.track))
+                .attr("fill-opacity", ghost ? 0.28 : 1)
                 .attr("stroke", hc && !on ? fg : "none").attr("stroke-width", hc && !on ? 1 : 0);
         }
 
@@ -195,6 +205,7 @@ export function renderEqualiser(ctx: EqCtx): void {
             const p = cg.append("rect")
                 .attr("x", x + bx).attr("y", yOf(pk)).attr("width", bw).attr("height", h).attr("rx", 2)
                 .attr("fill", hc ? "none" : (colc || bandOf(pk)))
+                .attr("fill-opacity", litHi != null ? 0.28 : 1)
                 .attr("stroke", hc ? fg : t.pkStroke).attr("stroke-width", 1.2);
             if (!hc && t.pkGlow) p.style("filter", "drop-shadow(0 0 4px rgba(255,255,255,0.4))");
         }

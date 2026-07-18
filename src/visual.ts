@@ -175,6 +175,8 @@ export class Visual implements IVisual {
                 hcFg: this.hcForeground,
                 hcBg: this.hcBackground,
                 columns: cols,
+                highlightActive: !!dv?.categorical?.values?.find(
+                    v => v.source.roles && v.source.roles["value"])?.highlights,
                 rows: eq.rows.value ?? 16,
                 mode: String(eq.mode.value?.value || "byValue"),
                 showPeaks: !!eq.showPeaks.value,
@@ -283,9 +285,13 @@ export class Visual implements IVisual {
             const sRaw = sortCol?.values?.[i];
             const sortOrder = typeof sRaw === "number" ? sRaw : (sRaw == null ? null : Number(sRaw));
 
+            const hRaw = valueCol.highlights?.[i];
+            const highlight = typeof hRaw === "number" ? hRaw : (hRaw == null ? null : Number(hRaw));
+
             out.push({
                 label, value,
                 peak: (peak != null && isFinite(peak)) ? peak : null,
+                highlight: (highlight != null && isFinite(highlight)) ? highlight : null,
                 sortOrder: (sortOrder != null && isFinite(sortOrder)) ? sortOrder : null,
                 selectionId, tooltipItems,
             });
