@@ -1,0 +1,178 @@
+"use strict";
+
+/* ─── Codex Equaliser Bar — LED block renderer ──────────────────────────────
+ * Geometry, tokens and colour logic ported VERBATIM from the normative board:
+ * docs/design-session-2026-07-09/Codex Equaliser Bar.dc.html (renderVals():
+ * pitch/yOf/bandOf/ramp, theme dicts, pk outline classes). The board is the
+ * spec (feedback_pbi_design_board_is_look_source). One deliberate deviation:
+ * the board demos peak-hold as lit+2; here the floater comes from the real
+ * Peak/Target measure — no fabricated peaks (feedback_no_placeholders).
+ */
+
+import { select, Selection } from "d3-selection";
+import { Theme } from "./shared/bandEngine";
+
+export interface EqTokens {
+    sg: string; sa: string; sm: string;   // band colours: floor / shoulder / crest
+    track: string;                        // unlit block stub
+    stops: [string, string, string];      // spectrum brand ramp
+    unit: string;                         // axis label ink
+    base: string;                         // baseline stroke
+    pkStroke: string;                     // peak-hold outline
+    pkGlow: boolean;
+}
+
+export function eqTokens(theme: Theme): EqTokens {
+    return theme === "dark" ? {
+        sg: "#8aff2b", sa: "#ffb020", sm: "#ff3b52",
+        track: "#1b1b38", stops: ["#00d9ff", "#7c3aed", "#ff2bd6"],
+        unit: "#8f8ab8", base: "rgba(124,58,237,0.24)",
+        pkStroke: "rgba(255,255,255,0.85)", pkGlow: true,
+    } : {
+        sg: "#1f8a3b", sa: "#a85f00", sm: "#c81d6b",
+        track: "#e2e4ef", stops: ["#0384a3", "#6d28d9", "#c81d6b"],
+        unit: "#5b5b74", base: "rgba(124,58,237,0.16)",
+        pkStroke: "rgba(0,0,0,0.45)", pkGlow: false,
+    };
+}
+
+/* ─── Board colour ramp (verbatim) ────────────────────────────────────────── */
+function hexRgb(c: string): [number, number, number] {
+    const n = parseInt(c.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function lerp(a: string, b: string, t: number): string {
+    const A = hexRgb(a), B = hexRgb(b);
+    return "#" + [0, 1, 2].map(i =>
+        Math.round(A[i] + (B[i] - A[i]) * t).toString(16).padStart(2, "0")).join("");
+}
+export function ramp(stops: [string, string, string], t: number): string {
+    return t < 0.5 ? lerp(stops[0], stops[1], t * 2) : lerp(stops[1], stops[2], (t - 0.5) * 2);
+}
+
+export interface EqColumn {
+    label: string;
+    value: number;      // raw
+    peak: number | null;
+}
+
+export interface EqFont {
+    family: string | null;
+    size: number | null;    // null/0 = board-proportional 10.5px
+    bold: boolean;
+    italic: boolean;
+    color: string | null;   // null/"" = unit token
+}
+
+export interface EqCtx {
+    group: SVGGElement;
+    width: number;
+    height: number;
+    titleHeight: number;
+    theme: Theme;
+    hc: boolean;
+    hcFg: string;
+    hcBg: string;
+    columns: EqColumn[];
+    rows: number;
+    mode: string;           // byValue | spectrum
+    showPeaks: boolean;
+    bandOverride: { sg: string | null; sa: string | null; sm: string | null };
+    labelFont: EqFont;
+    align: string;          // axis label anchor: left|center|right within column
+    onColumnEl?: (el: SVGGElement, index: number) => void;
+}
+
+/* ─── Render (board viewBox 34n+32 × 252) ─────────────────────────────────── */
+export function renderEqualiser(ctx: EqCtx): void {
+    const t = eqTokens(ctx.theme);
+    const hc = ctx.hc, fg = ctx.hcFg;
+    const n = ctx.columns.length;
+    if (n === 0) return;
+
+    const rows = Math.max(4, Math.min(40, Math.round(ctx.rows || 16)));
+    const designW = 34 * n + 32;
+    const designH = 252;
+
+    const sg = ctx.bandOverride.sg || t.sg;
+    const sa = ctx.bandOverride.sa || t.sa;
+    const sm = ctx.bandOverride.sm || t.sm;
+
+    // Board maths (verbatim): pitch 210 across the meter, blocks 26 wide.
+    const pitch = 210 / rows;
+    const h = +Math.max(pitch - 3, 3).toFixed(2);
+    const yOf = (r: number) => +(226 - (r + 1) * pitch).toFixed(2);
+    const bandOf = (r: number) => { const f = (r + 0.5) / rows; return f < 0.6 ? sg : f < 0.85 ? sa : sm; };
+
+    // Normalise against the data max (values and peaks share the scale).
+    let max = 0;
+    for (const c of ctx.columns) {
+        if (isFinite(c.value)) max = Math.max(max, c.value);
+        if (c.peak != null && isFinite(c.peak)) max = Math.max(max, c.peak);
+    }
+    if (max <= 0) max = 1;
+
+    // Fit the design box into the viewport (suite fitGroup idiom).
+    const sel = select(ctx.group);
+    sel.selectAll("*").remove();
+    const availH = Math.max(10, ctx.height - ctx.titleHeight);
+    const m = Math.max(8, Math.min(ctx.width, availH) * 0.05);
+    const s = Math.min((ctx.width - 2 * m) / designW, (availH - 2 * m) / designH);
+    const g = sel.append("g").attr("transform",
+        `translate(${((ctx.width - designW * s) / 2).toFixed(2)},${(ctx.titleHeight + (availH - designH * s) / 2).toFixed(2)}) scale(${s.toFixed(4)})`);
+
+    g.append("line")
+        .attr("x1", 12).attr("y1", 228).attr("x2", designW - 12).attr("y2", 228)
+        .attr("stroke", hc ? fg : t.base).attr("stroke-width", 1.5);
+
+    ctx.columns.forEach((col, i) => {
+        const x = 14 + i * 34;
+        const v = Math.max(0, Math.min(col.value / max, 1));
+        const lit = Math.round(v * rows);
+        const colc = ctx.mode === "spectrum" ? ramp(t.stops, n === 1 ? 0 : i / (n - 1)) : null;
+
+        const colG = g.append("g").node() as SVGGElement;
+        const cg = select(colG);
+
+        for (let r = 0; r < rows; r++) {
+            const on = r < lit;
+            cg.append("rect")
+                .attr("x", x).attr("y", yOf(r)).attr("width", 26).attr("height", h).attr("rx", 2)
+                .attr("fill", hc ? (on ? fg : "none") : (on ? (colc || bandOf(r)) : t.track))
+                .attr("stroke", hc && !on ? fg : "none").attr("stroke-width", hc && !on ? 1 : 0);
+        }
+
+        // Peak-hold floater — real measure only, rendered the hardware way:
+        // a detached outlined block at the remembered level.
+        if (ctx.showPeaks && col.peak != null && isFinite(col.peak) && col.peak > 0) {
+            const pv = Math.max(0, Math.min(col.peak / max, 1));
+            const pk = Math.max(0, Math.min(Math.round(pv * rows) - 1, rows - 1));
+            const p = cg.append("rect")
+                .attr("x", x).attr("y", yOf(pk)).attr("width", 26).attr("height", h).attr("rx", 2)
+                .attr("fill", hc ? "none" : (colc || bandOf(pk)))
+                .attr("stroke", hc ? fg : t.pkStroke).attr("stroke-width", 1.2);
+            if (!hc && t.pkGlow) p.style("filter", "drop-shadow(0 0 4px rgba(255,255,255,0.4))");
+        }
+
+        // Axis label (board .axlab: 10.5px 600 unit ink, centred under the column).
+        const lf = ctx.labelFont;
+        const anchor = ctx.align === "left" ? "start" : ctx.align === "right" ? "end" : "middle";
+        const lx = ctx.align === "left" ? x : ctx.align === "right" ? x + 26 : x + 13;
+        cg.append("text")
+            .attr("x", lx).attr("y", 245).attr("text-anchor", anchor)
+            .attr("fill", hc ? fg : (lf.color || t.unit))
+            .style("font-family", lf.family || "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
+            .style("font-size", `${(lf.size && lf.size > 0) ? lf.size : 10.5}px`)
+            .style("font-weight", lf.bold ? "700" : "600")
+            .style("font-style", lf.italic ? "italic" : "normal")
+            .style("letter-spacing", "0.04em")
+            .text(col.label);
+
+        // Transparent hit surface for tooltip/selection over the whole column.
+        cg.append("rect")
+            .attr("x", x - 4).attr("y", 8).attr("width", 34).attr("height", 240)
+            .attr("fill", "transparent");
+
+        if (ctx.onColumnEl) ctx.onColumnEl(colG, i);
+    });
+}
