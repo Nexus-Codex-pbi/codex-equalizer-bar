@@ -59,6 +59,14 @@ class EqualiserCard extends FormattingSettingsCard {
         },
     });
     showPeaks = new formattingSettings.ToggleSwitch({ name: "showPeaks", displayName: "Peak-hold", value: true });
+    blockWidth = new formattingSettings.NumUpDown({
+        name: "blockWidth", displayName: "Block width", value: 26,
+        description: "Block width in board units (column pitch is 34)",
+        options: {
+            minValue: { type: powerbi.visuals.ValidatorType.Min, value: 6 },
+            maxValue: { type: powerbi.visuals.ValidatorType.Max, value: 32 },
+        },
+    });
     greenColor = new formattingSettings.ColorPicker({
         name: "greenColor", displayName: "Band - floor",
         description: "Blank = automatic (theme token)",
@@ -76,9 +84,30 @@ class EqualiserCard extends FormattingSettingsCard {
     });
     name = "equaliser"; displayName = "Equaliser";
     slices: FormattingSettingsSlice[] = [
-        this.mode, this.rows, this.showPeaks,
+        this.mode, this.rows, this.blockWidth, this.showPeaks,
         this.greenColor, this.amberColor, this.redColor,
     ];
+}
+
+class AxisCard extends FormattingSettingsCard {
+    showAxisTitles = new formattingSettings.ToggleSwitch({
+        name: "showAxisTitles", displayName: "Show axis titles",
+        description: "X title below the labels, Y title rotated beside the meter",
+        value: false,
+    });
+    xAxisTitle = new formattingSettings.TextInput({
+        name: "xAxisTitle", displayName: "X axis title", placeholder: "X axis title", value: "",
+    });
+    yAxisTitle = new formattingSettings.TextInput({
+        name: "yAxisTitle", displayName: "Y axis title", placeholder: "Y axis title", value: "",
+    });
+    color = new formattingSettings.ColorPicker({
+        name: "color", displayName: "Title color",
+        description: "Blank = automatic (theme token)",
+        value: { value: "" }, instanceKind: ConstantOrRule,
+    });
+    name = "axisSettings"; displayName = "Axis";
+    slices: FormattingSettingsSlice[] = [this.showAxisTitles, this.xAxisTitle, this.yAxisTitle, this.color];
 }
 
 class LabelStyleCard extends FormattingSettingsCard {
@@ -105,11 +134,12 @@ class LabelStyleCard extends FormattingSettingsCard {
 
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     equaliser = new EqualiserCard();
+    axisSettings = new AxisCard();
     titleSettings = new TitleSettingsCard();
     labelStyle = new LabelStyleCard();
     background = new BackgroundSettings();
     cardSignature = new CardSignatureSettings();
     visualBorder = new BorderSettings();
 
-    cards = [this.equaliser, this.titleSettings, this.labelStyle, this.background, this.cardSignature, this.visualBorder];
+    cards = [this.equaliser, this.axisSettings, this.titleSettings, this.labelStyle, this.background, this.cardSignature, this.visualBorder];
 }

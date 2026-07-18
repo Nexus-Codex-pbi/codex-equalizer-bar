@@ -64,6 +64,13 @@ export interface EqFont {
     color: string | null;   // null/"" = unit token
 }
 
+export interface EqAxis {
+    show: boolean;
+    xTitle: string;
+    yTitle: string;
+    color: string | null;   // null/"" = unit token
+}
+
 export interface EqCtx {
     group: SVGGElement;
     width: number;
@@ -77,9 +84,11 @@ export interface EqCtx {
     rows: number;
     mode: string;           // byValue | spectrum
     showPeaks: boolean;
+    blockWidth: number;     // board units, 6-32 within the 34 pitch (board 26)
     bandOverride: { sg: string | null; sa: string | null; sm: string | null };
     labelFont: EqFont;
     align: string;          // axis label anchor: left|center|right within column
+    axis: EqAxis;
     onColumnEl?: (el: SVGGElement, index: number) => void;
 }
 
@@ -91,8 +100,20 @@ export function renderEqualiser(ctx: EqCtx): void {
     if (n === 0) return;
 
     const rows = Math.max(4, Math.min(40, Math.round(ctx.rows || 16)));
-    const designW = 34 * n + 32;
-    const designH = 252;
+    const bw = Math.max(6, Math.min(32, Math.round(ctx.blockWidth || 26)));
+    const bx = (26 - bw) / 2;   // centre the block in the board's 26-wide slot
+
+    // Axis-title bands extend the design box; geometry inside stays board-
+    // verbatim. Y title gets a left band (rotated -90 — never horizontal over
+    // the data), X title a bottom band with clearance off the edge (both per
+    // the Variance Waterfall axis-title gotchas).
+    const showX = ctx.axis.show && !!ctx.axis.xTitle;
+    const showY = ctx.axis.show && !!ctx.axis.yTitle;
+    const padL = showY ? 22 : 0;
+    const padB = showX ? 22 : 0;
+    const coreW = 34 * n + 32;
+    const designW = coreW + padL;
+    const designH = 252 + padB;
 
     const sg = ctx.bandOverride.sg || t.sg;
     const sa = ctx.bandOverride.sa || t.sa;
@@ -118,11 +139,35 @@ export function renderEqualiser(ctx: EqCtx): void {
     const availH = Math.max(10, ctx.height - ctx.titleHeight);
     const m = Math.max(8, Math.min(ctx.width, availH) * 0.05);
     const s = Math.min((ctx.width - 2 * m) / designW, (availH - 2 * m) / designH);
-    const g = sel.append("g").attr("transform",
+    const outer = sel.append("g").attr("transform",
         `translate(${((ctx.width - designW * s) / 2).toFixed(2)},${(ctx.titleHeight + (availH - designH * s) / 2).toFixed(2)}) scale(${s.toFixed(4)})`);
 
+    const axisInk = hc ? fg : (ctx.axis.color || t.unit);
+    if (showY) {
+        outer.append("text")
+            .attr("transform", "translate(9,122) rotate(-90)")
+            .attr("text-anchor", "middle").attr("dominant-baseline", "middle")
+            .attr("fill", axisInk)
+            .style("font-family", "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
+            .style("font-size", "11px").style("font-weight", "600")
+            .style("letter-spacing", "0.06em")
+            .text(ctx.axis.yTitle);
+    }
+    if (showX) {
+        outer.append("text")
+            .attr("x", padL + coreW / 2).attr("y", designH - 8)
+            .attr("text-anchor", "middle")
+            .attr("fill", axisInk)
+            .style("font-family", "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
+            .style("font-size", "11px").style("font-weight", "600")
+            .style("letter-spacing", "0.06em")
+            .text(ctx.axis.xTitle);
+    }
+
+    const g = outer.append("g").attr("transform", `translate(${padL},0)`);
+
     g.append("line")
-        .attr("x1", 12).attr("y1", 228).attr("x2", designW - 12).attr("y2", 228)
+        .attr("x1", 12).attr("y1", 228).attr("x2", coreW - 12).attr("y2", 228)
         .attr("stroke", hc ? fg : t.base).attr("stroke-width", 1.5);
 
     ctx.columns.forEach((col, i) => {
@@ -137,7 +182,7 @@ export function renderEqualiser(ctx: EqCtx): void {
         for (let r = 0; r < rows; r++) {
             const on = r < lit;
             cg.append("rect")
-                .attr("x", x).attr("y", yOf(r)).attr("width", 26).attr("height", h).attr("rx", 2)
+                .attr("x", x + bx).attr("y", yOf(r)).attr("width", bw).attr("height", h).attr("rx", 2)
                 .attr("fill", hc ? (on ? fg : "none") : (on ? (colc || bandOf(r)) : t.track))
                 .attr("stroke", hc && !on ? fg : "none").attr("stroke-width", hc && !on ? 1 : 0);
         }
@@ -148,7 +193,7 @@ export function renderEqualiser(ctx: EqCtx): void {
             const pv = Math.max(0, Math.min(col.peak / max, 1));
             const pk = Math.max(0, Math.min(Math.round(pv * rows) - 1, rows - 1));
             const p = cg.append("rect")
-                .attr("x", x).attr("y", yOf(pk)).attr("width", 26).attr("height", h).attr("rx", 2)
+                .attr("x", x + bx).attr("y", yOf(pk)).attr("width", bw).attr("height", h).attr("rx", 2)
                 .attr("fill", hc ? "none" : (colc || bandOf(pk)))
                 .attr("stroke", hc ? fg : t.pkStroke).attr("stroke-width", 1.2);
             if (!hc && t.pkGlow) p.style("filter", "drop-shadow(0 0 4px rgba(255,255,255,0.4))");

@@ -151,6 +151,7 @@ export class Visual implements IVisual {
             }
 
             const eq = this.formattingSettings.equaliser;
+            const ax = this.formattingSettings.axisSettings;
             const ls = this.formattingSettings.labelStyle;
             const width = options.viewport.width;
             const height = options.viewport.height;
@@ -177,6 +178,13 @@ export class Visual implements IVisual {
                 rows: eq.rows.value ?? 16,
                 mode: String(eq.mode.value?.value || "byValue"),
                 showPeaks: !!eq.showPeaks.value,
+                blockWidth: eq.blockWidth.value ?? 26,
+                axis: {
+                    show: !!ax.showAxisTitles.value,
+                    xTitle: ax.xAxisTitle.value || "",
+                    yTitle: ax.yAxisTitle.value || "",
+                    color: ax.color.value?.value || null,
+                },
                 bandOverride: {
                     sg: eq.greenColor.value?.value || null,
                     sa: eq.amberColor.value?.value || null,

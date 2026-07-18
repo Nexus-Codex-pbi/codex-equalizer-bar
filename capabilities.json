@@ -383,6 +383,45 @@
                             }
                         }
                     }
+                },
+                "blockWidth": {
+                    "displayName": "Block width",
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "axisSettings": {
+            "displayName": "Axis",
+            "properties": {
+                "showAxisTitles": {
+                    "displayName": "Show axis titles",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "xAxisTitle": {
+                    "displayName": "X axis title",
+                    "type": {
+                        "text": true
+                    }
+                },
+                "yAxisTitle": {
+                    "displayName": "Y axis title",
+                    "type": {
+                        "text": true
+                    }
+                },
+                "color": {
+                    "displayName": "Title color",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
                 }
             }
         }
