@@ -35,6 +35,7 @@ function themeFor(hex: string): Theme {
 }
 
 interface ColumnData extends EqColumn {
+    sortOrder: number | null;
     selectionId: ISelectionId;
     tooltipItems: VisualTooltipDataItem[];
 }
@@ -241,6 +242,7 @@ export class Visual implements IVisual {
         const findCol = (role: string) => valuesArr.find(v => v.source.roles && v.source.roles[role]);
         const valueCol = findCol("value");
         const peakCol = findCol("peak");
+        const sortCol = findCol("sortOrder");
         const tooltipCols = valuesArr.filter(v => v.source.roles && v.source.roles["tooltips"]);
         if (!valueCol) return [];
 
@@ -270,7 +272,20 @@ export class Visual implements IVisual {
                 if (tv != null) tooltipItems.push({ displayName: tc.source.displayName, value: this.formatValue(tv as number, tc.source.format ?? null) });
             }
 
-            out.push({ label, value, peak: (peak != null && isFinite(peak)) ? peak : null, selectionId, tooltipItems });
+            const sRaw = sortCol?.values?.[i];
+            const sortOrder = typeof sRaw === "number" ? sRaw : (sRaw == null ? null : Number(sRaw));
+
+            out.push({
+                label, value,
+                peak: (peak != null && isFinite(peak)) ? peak : null,
+                sortOrder: (sortOrder != null && isFinite(sortOrder)) ? sortOrder : null,
+                selectionId, tooltipItems,
+            });
+        }
+        // Columns follow the Sort order well ascending when supplied (suite
+        // idiom, same as KPI Wall) — host category order otherwise.
+        if (out.some(c => c.sortOrder != null)) {
+            out.sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER));
         }
         return out;
     }

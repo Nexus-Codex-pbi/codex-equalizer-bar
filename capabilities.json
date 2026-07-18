@@ -19,6 +19,12 @@
             "description": "Optional. Floating peak-hold block (period high, target, or prior period)"
         },
         {
+            "displayName": "Sort order",
+            "name": "sortOrder",
+            "kind": "Measure",
+            "description": "Optional numeric sort key - columns follow it ascending (e.g. month number)"
+        },
+        {
             "displayName": "Tooltips",
             "name": "tooltips",
             "kind": "Measure",
@@ -36,6 +42,9 @@
                         "max": 1
                     },
                     "peak": {
+                        "max": 1
+                    },
+                    "sortOrder": {
                         "max": 1
                     }
                 }
@@ -61,6 +70,11 @@
                         {
                             "bind": {
                                 "to": "peak"
+                            }
+                        },
+                        {
+                            "bind": {
+                                "to": "sortOrder"
                             }
                         },
                         {
@@ -387,5 +401,8 @@
             "tooltips"
         ]
     },
-    "privileges": []
+    "privileges": [],
+    "sorting": {
+        "default": {}
+    }
 }

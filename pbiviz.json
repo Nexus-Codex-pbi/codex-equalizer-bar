@@ -4,7 +4,7 @@
     "displayName": "Codex Equaliser Bar",
     "guid": "codexEqualiserBarB265546316B54F718074A256EC035591",
     "visualClassName": "Visual",
-    "version": "1.0.0.0",
+    "version": "1.0.0.1",
     "description": "A column chart of discrete LED blocks - VU-meter DNA. Levels are block-quantised, unlit stubs keep the full grid visible, and a floating peak-hold block remembers the period high. Two colour modes: green-amber-red by level band, or spectrum-by-category on the brand ramp.",
     "supportUrl": "https://nexuscodex.nexus/support",
     "gitHubUrl": ""
@@ -23,6 +23,6 @@
   "stringResources": [
     "stringResources/en-US/resources.resjson"
   ],
-  "version": "1.0.0.0",
+  "version": "1.0.0.1",
   "dependencies": null
 }
