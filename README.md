@@ -1,97 +1,66 @@
-# Codex Visual Template
+# Codex Equalizer Bar
 
-**Use this folder as the starting point for every new Codex Power BI visual.**
+## Overview
+An LED-block equalizer for Power BI. Every category becomes a column of stacked blocks, with its peak held above the stack. It reads like studio metering hardware rather than a bar chart — which is the point on a wallboard. Built for comparing a handful of categories where the shape of the board matters as much as the numbers: channel revenue, regional load, utilisation by line.
 
-It bakes in every cert-passing lesson + format-pane pattern from the existing visuals so you don't relearn them. Copy the folder, rename, edit only the per-visual-specific bits, and the result is cert-ready by default.
+> **Naming:** the marketplace offer and every customer-facing string use the **z** spelling (*Equalizer*). The repository folder, `visual.name`, the GUID and the internal format-card property `equaliser` keep the **s** spelling — they are identity, not display text, and renaming them would break saved reports.
 
----
+## Features
+- Two colour modes — **by value**, where each column takes its own band colour, and **spectrum**, where colour runs across the whole board
+- Block resolution is configurable (default 16 rows) — a chunky board or a fine meter
+- Adjustable block width
+- Optional peak markers, driven by a separate Peak / Target field
+- Green, amber and red band colours are all configurable
+- Optional sort order measure controls the order columns appear in (ascending)
+- Optional axis titles with their own colour
+- Full font control on category labels — family, size, bold, italic, colour and alignment
+- Background colour with transparency; border with width, colour and radius
+- Card signature accent with style, colour, corner radius and mirrored corners
+- Click a column to cross-filter other visuals; highlights arriving from other visuals are read and rendered
+- Custom tooltips, keyboard focus and high contrast mode support
 
-## What's pre-built
+## Data Roles
+| Role | Display Name | Kind | Required? | Description |
+|------|--------------|------|-----------|-------------|
+| category | Category | Grouping | Yes | One column per category |
+| value | Value | Measure | Yes | Column level — blocks light up to this value |
+| peak | Peak / Target | Measure | No | Floating peak-hold block (period high, target, or prior period) |
+| sortOrder | Sort order | Measure | No | Numeric sort key — columns follow it ascending (e.g. month number) |
+| tooltips | Tooltips | Measure | No | Extra measures for the hover tooltip |
 
-### Cert compliance (Policy 1180.2.x — verified across cert-passed visuals)
+`dataReductionAlgorithm` is deliberately capped at **100** rows. This is a board of per-category columns, not a scrolling dataset.
 
-- **Internal visual title** rendered inside the iframe with full font / alignment / colour controls — the fix for Policy 1180.2.5 right-click context menu dead-zone caused by PBI's auto-rendered title chrome.
-- **Single `contextmenu` listener on `options.element`** matching MS sample BarChart — no overlay, no per-element duplicates that double-fire and break `showContextMenu({}, ...)`.
-- **`renderEmpty()` landing state** with branded guidance copy. Without this, PBI's auto landing-page chrome sits on top of the iframe and absorbs events. Even at default Padding > 0, this keeps right-click reachable.
-- **`overflow: auto` on the root** + `min-height` floor on cards so resizing produces scrollbars instead of overlapping content (Policy 1180.2.2).
-- **Supports flags all true:** `supportsHighlight`, `supportsKeyboardFocus`, `supportsLandingPage`, `supportsEmptyDataView`, `supportsMultiVisualSelection`.
-- **Tooltips:** `default: true, canvas: true` + tooltipService wiring on hover.
-- **Filter pipeline:** `dataViewMappings.categories` uses `for` pattern (filter participation); `select` for measures.
-- **`dataReductionAlgorithm` = 30000** (max accepted by PBI cert team).
-- **No `innerHTML` / `eval` / external requests** — uses `createElement` + `removeChild` loops, no fetch/XHR, no external scripts.
-- **`ISandboxExtendedColorPalette`** for high contrast support.
-- **`ILocalizationManager`** with en-US `resources.resjson` for landing-page strings.
-- **`destroy()` cleanup** — DOM removal + nulling field references.
-- **`prefers-reduced-motion: reduce`** honoured on any animation pseudo-element.
+## Formatting Options
 
-### Format-pane patterns
+### Visual Title
+Show Title, Title Text, Font Family, Font Size, Bold, Italic, Underline, Alignment, Font Colour.
 
-- **`TitleSettingsCard`** — Show toggle, Title Text, FontControl (family + size + bold + italic + underline), AlignmentGroup (left/center/right), ColorPicker.
-- **Helper `alignSlice(name, default)`** — drop-in factory for adding a Left/Center/Right control to any card.
-- **Helper `alignSelf(value)`** — maps the alignment slice value to a flex `align-self` keyword.
-- **`ConstantOrRule` instanceKind** on every ColorPicker — enables conditional formatting drivers.
-- **`FontControl` composite** for any text-displaying field well (label/value/subtitle/etc.) — gives the user one collapsed Font block instead of five separate sliders.
+### Equalizer
+- **Mode** — By value or Spectrum
+- **Block rows** — default 16
+- **Block width**
+- **Show peaks**
+- **Green / Amber / Red colour**
 
-### Sample `.pbix` checklist (do this before submitting cert)
+### Axis
+Show axis titles, X axis title, Y axis title, Colour.
 
-- General → Padding = 0 on all four sides on every visual instance in the sample.
-- Add a textbox panel describing field wells + expected behaviour (Policy 1180.2.3.1).
-- Save the sample with the latest visual binary loaded (otherwise cert team tests an outdated build).
+### Label
+Font Family, Font Size, Bold, Italic, Colour, Alignment.
 
----
+### Background / Border / Card signature
+Background colour and transparency; border show, colour, transparency, width and radius; card signature show, style, auto colour, colour, corner radius and mirrored corners.
 
-## How to use the template
+## Build
+Node 20, `powerbi-visuals-tools` 7.0.2, `powerbi-visuals-api` 5.11.0, TypeScript 5.5.4.
 
-1. Copy the folder:
-   ```bash
-   cp -r ~/pbi-visuals/_template-codex ~/pbi-visuals/<visualDirName>
-   cd ~/pbi-visuals/<visualDirName>
-   ```
+```bash
+npm install
+npm run package     # writes dist/<guid>.<version>.pbiviz
+npx eslint src      # 0 errors expected
+```
 
-2. Edit `pbiviz.json`:
-   - `visual.name` (camelCase, no spaces, e.g. `codexCalendarHeatmap`)
-   - `visual.displayName` (human-readable, e.g. `Codex Calendar Heatmap`)
-   - `visual.guid` (32-char hex — append `<NAME><RANDOM_HEX>` so it's globally unique)
-   - `visual.description` (one-line)
-   - `visual.version` start at `1.0.0.0`
-
-3. Edit `capabilities.json`:
-   - `dataRoles` — define your field wells (replace the placeholder `value` / `category` examples)
-   - `dataViewMappings` — wire each role into the categorical mapping
-   - `objects` — add visual-specific format objects beside the pre-built `titleSettings`
-
-4. Edit `src/settings.ts`:
-   - Add cards alongside `TitleSettingsCard`
-   - For any text-displaying field well, instantiate an `alignSlice()` and a `FontControl` (see the headline pattern in KPI Wall)
-
-5. Edit `src/visual.ts`:
-   - Replace the `// TODO: render content` block with your actual rendering
-   - Tooltip and click handlers are pre-wired — fill in tooltip data items and selection IDs in the per-element loop
-
-6. Edit `style/visual.less`:
-   - Add visual-specific styles — root and card scaffolding is already correct
-
-7. Build:
-   ```bash
-   npm install
-   pbiviz package
-   ```
-
-8. Before submitting cert, run the checklist in `CHECKLIST.md`.
+No external network calls, no third-party services and no telemetry.
 
 ---
-
-## Files
-
-- `pbiviz.json` — manifest, API version, metadata
-- `capabilities.json` — data roles, dataViewMappings, format objects, supports* flags
-- `src/visual.ts` — render lifecycle, contextmenu, title, landing
-- `src/settings.ts` — formatting model with TitleSettings + helpers
-- `style/visual.less` — root/card scaffolding + reduced-motion guard
-- `stringResources/en-US/resources.resjson` — localized landing copy
-- `assets/icon.png` — placeholder (replace with real 20×20 PNG)
-- `CHECKLIST.md` — pre-submit cert verification
-- `eslint.config.mjs` — copy from any existing visual after `pbiviz new`-style scaffold
-- `package.json` / `tsconfig.json` — copy from any existing visual
-
-> **For the npm/tsconfig/eslint files**: easiest is to scaffold an empty visual via `pbiviz new __scratch` once, copy those three files into your new visual, then delete `__scratch`. The template doesn't carry them because they vary slightly with pbiviz tool version.
+Built by [Nexus Codex](https://nexuscodex.nexus). Support: support@nexuscodex.nexus
