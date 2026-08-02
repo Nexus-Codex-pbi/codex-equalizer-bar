@@ -325,7 +325,7 @@
             }
         },
         "equaliser": {
-            "displayName": "Equaliser",
+            "displayName": "Equalizer",
             "properties": {
                 "mode": {
                     "displayName": "Colour mode",

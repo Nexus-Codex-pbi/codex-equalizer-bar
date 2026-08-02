@@ -332,7 +332,7 @@ export class Visual implements IVisual {
         wrap.className = "codex-visual-empty";
         const h = document.createElement("div");
         h.className = "codex-visual-empty-title";
-        h.textContent = "Codex Equaliser Bar";
+        h.textContent = "Codex Equalizer Bar";
         const p = document.createElement("div");
         p.className = "codex-visual-empty-body";
         p.textContent = "Add a Category and a Value measure. Optional: Peak / Target measure for the floating peak-hold block.";

@@ -82,7 +82,7 @@ class EqualiserCard extends FormattingSettingsCard {
         description: "Blank = automatic (theme token)",
         value: { value: "" }, instanceKind: ConstantOrRule,
     });
-    name = "equaliser"; displayName = "Equaliser";
+    name = "equaliser"; displayName = "Equalizer";
     slices: FormattingSettingsSlice[] = [
         this.mode, this.rows, this.blockWidth, this.showPeaks,
         this.greenColor, this.amberColor, this.redColor,
