@@ -25,6 +25,7 @@ import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature"
 import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { applyBorder } from "./shared/borderSettings";
 import { renderEqualiser, EqColumn } from "./equaliser";
+import { LicenseGate } from "./shared/licensing";
 
 /** Luminance theme pick off the shared Background card (suite idiom). */
 function themeFor(hex: string): Theme {
@@ -57,7 +58,22 @@ export class Visual implements IVisual {
     private columnEls: SVGGElement[] = [];
     private selectedIdx = new Set<number>();
 
+    private licenseGate: LicenseGate;
+
+    private lastUpdateOptions: VisualUpdateOptions | null = null;
+
+
     constructor(options: VisualConstructorOptions) {
+
+        // NO FREE TIER — an unlicensed user gets the whole visual blocked.
+
+        // The check is async, so re-run the last update once it resolves.
+
+        this.licenseGate = new LicenseGate(options.host, () => {
+
+            if (this.lastUpdateOptions) this.update(this.lastUpdateOptions);
+
+        });
         this.host = options.host;
         this.target = options.element;
         this.target.style.margin = "0";
@@ -103,6 +119,14 @@ export class Visual implements IVisual {
 
     public update(options: VisualUpdateOptions): void {
         this.events.renderingStarted(options);
+        this.lastUpdateOptions = options;
+
+        if (this.licenseGate.blockedThisFrame()) {
+            this.target.style.display = "none";
+            this.events.renderingFinished(options);
+            return;
+        }
+        this.target.style.display = "";
         try {
             const colorPalette = this.host.colorPalette as ISandboxExtendedColorPalette;
             this.isHighContrast = !!colorPalette.isHighContrast;
