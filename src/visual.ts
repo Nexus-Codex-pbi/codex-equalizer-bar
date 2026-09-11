@@ -41,6 +41,10 @@ function pageBehind(palette: ISandboxExtendedColorPalette): string {
  *  to emit negative SVG dimensions (NEXUS cycle-04 §4). */
 const MIN_BODY_PX = 24;
 
+function finiteMeasure(raw: unknown): number | null {
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
 /** A listener this visual attached and is therefore responsible for removing. */
 interface Binding { el: EventTarget; type: string; fn: EventListener }
 
@@ -385,11 +389,9 @@ export class Visual implements IVisual {
         const n = labels.values?.length ?? 0;
         for (let i = 0; i < n; i++) {
             const label = String(labels.values[i] ?? "");
-            const vRaw = valueCol.values?.[i];
-            const value = typeof vRaw === "number" ? vRaw : (vRaw == null ? NaN : Number(vRaw));
-            if (!isFinite(value)) continue;
-            const pRaw = peakCol?.values?.[i];
-            const peak = typeof pRaw === "number" ? pRaw : (pRaw == null ? null : Number(pRaw));
+            const value = finiteMeasure(valueCol.values?.[i]);
+            if (value === null) continue;
+            const peak = finiteMeasure(peakCol?.values?.[i]);
 
             const selectionId = this.host.createSelectionIdBuilder()
                 .withCategory(labels, i)
@@ -404,27 +406,24 @@ export class Visual implements IVisual {
             }
             for (const tc of tooltipCols) {
                 const tv = tc.values?.[i];
-                if (tv != null) tooltipItems.push({ displayName: tc.source.displayName, value: this.formatValue(tv as number, tc.source.format ?? null) });
+                if (tv != null) tooltipItems.push({ displayName: tc.source.displayName, value: this.formatValue(tv, tc.source.format ?? null) });
             }
 
-            const sRaw = sortCol?.values?.[i];
-            const sortOrder = typeof sRaw === "number" ? sRaw : (sRaw == null ? null : Number(sRaw));
-
-            const hRaw = valueCol.highlights?.[i];
-            const highlight = typeof hRaw === "number" ? hRaw : (hRaw == null ? null : Number(hRaw));
-
             out.push({
-                label, value,
-                peak: (peak != null && isFinite(peak)) ? peak : null,
-                highlight: (highlight != null && isFinite(highlight)) ? highlight : null,
-                sortOrder: (sortOrder != null && isFinite(sortOrder)) ? sortOrder : null,
+                label, value, peak,
+                highlight: finiteMeasure(valueCol.highlights?.[i]),
+                sortOrder: finiteMeasure(sortCol?.values?.[i]),
                 selectionId, tooltipItems,
             });
         }
         // Columns follow the Sort order well ascending when supplied (suite
         // idiom, same as KPI Wall) — host category order otherwise.
         if (out.some(c => c.sortOrder != null)) {
-            out.sort((a, b) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER));
+            out.sort((a, b) => {
+                if (a.sortOrder === null) return b.sortOrder === null ? 0 : 1;
+                if (b.sortOrder === null) return -1;
+                return a.sortOrder - b.sortOrder;
+            });
         }
         return out;
     }
@@ -477,8 +476,8 @@ export class Visual implements IVisual {
         this.rootDiv.appendChild(wrap);
     }
 
-    private formatValue(n: number, format: string | null): string {
-        if (n == null || !isFinite(n)) return String(n ?? "");
+    private formatValue(n: unknown, format: string | null): string {
+        if (typeof n !== "number" || !Number.isFinite(n)) return String(n ?? "");
         // Optional `#` digits are honoured: a single derived count used as both
         // min and max rendered `0.##` 12.34 as "12" (NEXUS cycle-02 F3).
         return formatModelNumber(n, format);
