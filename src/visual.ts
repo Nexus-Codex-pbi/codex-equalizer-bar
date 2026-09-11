@@ -107,8 +107,15 @@ export class Visual implements IVisual {
             { variant: "cornerBracket", mirror: true }
         );
 
-        this.selectionManager.registerOnSelectCallback(() => {
-            this.selectedKeys.clear();
+        // A host-driven selection change — a cross-filter from another visual, a bookmark,
+        // or the report clearing selection — must APPLY the dim, not drop it. Reconcile the
+        // retained key set against the identities the host hands the callback rather than
+        // emptying it. An empty report means nothing is selected, which is the only case
+        // that renders as it did before (NEXUS cycle-04 §1).
+        this.selectionManager.registerOnSelectCallback((ids: ISelectionId[]) => {
+            this.selectedKeys = new Set(
+                (ids || []).filter(id => id && typeof id.getKey === "function").map(id => this.keyOf(id))
+            );
             this.applySelectionDim();
         });
 
