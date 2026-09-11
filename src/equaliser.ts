@@ -67,9 +67,13 @@ function fitLabel(node: SVGTextElement, full: string, requestedPx: number): void
     // getComputedTextLength reports board units here: the scale transform lives
     // on an ancestor group, so the text's own user space is the design box.
     if (typeof node.getComputedTextLength !== "function") return;
+    // Labels are centred on the pitch, so neighbours only collide once a label is
+    // WIDER than the pitch — measuring against pitch-minus-gutter instead shrank
+    // labels that were already clearing each other by 1.58px. Trigger on the real
+    // collision threshold; fit to the gutter only once we have to act.
     const avail = LABEL_PITCH - LABEL_GUTTER;
     let length = node.getComputedTextLength();
-    if (!(length > avail)) return;   // already fits — render is untouched
+    if (!(length > LABEL_PITCH)) return;   // no collision possible — render untouched
 
     // Aim a hair inside the gutter: shrinking to exactly `avail` leaves the
     // re-measure on the boundary, which ellipsised labels that in fact fit.
@@ -269,7 +273,9 @@ export function renderEqualiser(ctx: EqCtx): void {
             .style("font-style", lf.italic ? "italic" : "normal")
             .style("letter-spacing", "0.04em")
             .text(col.label);
-        fitLabel(labelEl.node() as SVGTextElement, col.label, labelPx);
+        // A lone column has no neighbour to collide with, so its label is left
+        // exactly as it renders today.
+        if (n > 1) fitLabel(labelEl.node() as SVGTextElement, col.label, labelPx);
 
         // Transparent hit surface for tooltip/selection over the whole column.
         cg.append("rect")
