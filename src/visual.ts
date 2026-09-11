@@ -56,6 +56,7 @@ interface ColumnData extends EqColumn {
 
 export class Visual implements IVisual {
     private host: IVisualHost;
+    private readonly allowInteractions: boolean;
     private target: HTMLElement;
     private rootDiv: HTMLDivElement;
     private svg: SVGSVGElement | null = null;
@@ -101,6 +102,8 @@ export class Visual implements IVisual {
 
         });
         this.host = options.host;
+        // This runtime flag is optional in hosts using the pinned API typings.
+        this.allowInteractions = (options.host as IVisualHost & { allowInteractions?: boolean }).allowInteractions !== false;
         this.target = options.element;
         this.target.style.margin = "0";
         this.target.style.padding = "0";
@@ -308,6 +311,7 @@ export class Visual implements IVisual {
     }
 
     private clearSelection(): void {
+        if (!this.allowInteractions) return;
         const revision = ++this.selectionRevision;
         this.setSelection([]);
         this.selectionManager.clear().then(
@@ -319,6 +323,7 @@ export class Visual implements IVisual {
     }
 
     private selectColumn(col: ColumnData, multi: boolean): void {
+        if (!this.allowInteractions) return;
         const revision = ++this.selectionRevision;
         this.selectionManager.select(col.selectionId, multi).then(
             (ids: ISelectionId[]) => {
@@ -351,10 +356,10 @@ export class Visual implements IVisual {
         const key = this.keyOf(col.selectionId);
         this.columnKeys[index] = key;
         el.classList.add("codex-equaliser-column");
-        el.setAttribute("tabindex", index === 0 ? "0" : "-1");
-        el.setAttribute("role", "button");
+        el.setAttribute("tabindex", this.allowInteractions && index === 0 ? "0" : "-1");
+        el.setAttribute("role", this.allowInteractions ? "button" : "img");
         el.setAttribute("aria-label", col.tooltipItems.map(item => `${item.displayName}: ${item.value}`).join(", "));
-        el.style.cursor = "pointer";
+        el.style.cursor = this.allowInteractions ? "pointer" : "default";
         this.bind(this.columnListeners, el, "contextmenu", (e: MouseEvent) => {
             this.selectionManager.showContextMenu(col.selectionId, { x: e.clientX, y: e.clientY });
             e.preventDefault();
@@ -370,6 +375,7 @@ export class Visual implements IVisual {
         };
         this.bind(this.columnListeners, el, "mousemove", (e: MouseEvent) => showTooltip(e.clientX, e.clientY));
         this.bind(this.columnListeners, el, "focus", () => {
+            if (!this.allowInteractions) return;
             this.columnEls.forEach(column => column.setAttribute("tabindex", column === el ? "0" : "-1"));
             const bounds = el.getBoundingClientRect();
             showTooltip(bounds.left + bounds.width / 2, bounds.bottom);
@@ -378,6 +384,7 @@ export class Visual implements IVisual {
             this.tooltipService.hide({ isTouchEvent: false, immediately: false });
         });
         this.bind(this.columnListeners, el, "click", (e: MouseEvent) => {
+            if (!this.allowInteractions) return;
             el.focus();
             this.selectColumn(col, e.ctrlKey || e.metaKey);
             e.stopPropagation();
@@ -386,6 +393,7 @@ export class Visual implements IVisual {
             this.tooltipService.hide({ isTouchEvent: false, immediately: true });
         });
         this.bind(this.columnListeners, el, "keydown", (e: KeyboardEvent) => {
+            if (!this.allowInteractions) return;
             const current = this.columnEls.indexOf(el);
             let next = current;
             if (e.key === "ArrowLeft") next = Math.max(0, current - 1);
@@ -414,7 +422,8 @@ export class Visual implements IVisual {
             if (el) {
                 const selected = this.selectedKeys.has(this.columnKeys[i]);
                 el.style.opacity = any && !selected ? "0.35" : "1";
-                el.setAttribute("aria-pressed", String(selected));
+                if (this.allowInteractions) el.setAttribute("aria-pressed", String(selected));
+                else el.removeAttribute("aria-pressed");
             }
         });
     }
