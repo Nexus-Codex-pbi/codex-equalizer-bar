@@ -63,7 +63,7 @@ const LABEL_PITCH = 34;
 const LABEL_GUTTER = 2;
 const LABEL_MIN_PX = 6;
 
-function fitLabel(node: SVGTextElement, full: string, requestedPx: number): void {
+function fitLabel(node: SVGTextElement, full: string, requestedPx: number, maxWidth = LABEL_PITCH, minPx = LABEL_MIN_PX): void {
     // getComputedTextLength reports board units here: the scale transform lives
     // on an ancestor group, so the text's own user space is the design box.
     if (typeof node.getComputedTextLength !== "function") return;
@@ -71,25 +71,26 @@ function fitLabel(node: SVGTextElement, full: string, requestedPx: number): void
     // WIDER than the pitch — measuring against pitch-minus-gutter instead shrank
     // labels that were already clearing each other by 1.58px. Trigger on the real
     // collision threshold; fit to the gutter only once we have to act.
-    const avail = LABEL_PITCH - LABEL_GUTTER;
+    const avail = Math.max(0, maxWidth - LABEL_GUTTER);
     let length = node.getComputedTextLength();
-    if (!(length > LABEL_PITCH)) return;   // no collision possible — render untouched
+    if (!(length > maxWidth)) return;
 
     // Aim a hair inside the gutter: shrinking to exactly `avail` leaves the
     // re-measure on the boundary, which ellipsised labels that in fact fit.
-    const shrunk = Math.max(LABEL_MIN_PX, requestedPx * (avail * 0.97 / length));
+    const shrunk = Math.max(minPx, requestedPx * (avail * 0.97 / length));
     if (shrunk < requestedPx) {
         node.style.fontSize = `${shrunk.toFixed(2)}px`;
         length = node.getComputedTextLength();
     }
     if (!(length > avail)) return;
 
-    let cut = full;
-    while (cut.length > 1) {
-        cut = cut.slice(0, -1);
-        node.textContent = cut + "…";
+    const cut = Array.from(full);
+    while (cut.length) {
+        cut.pop();
+        node.textContent = cut.join("") + "…";
         if (node.getComputedTextLength() <= avail) return;
     }
+    node.textContent = "";
 }
 
 export interface EqColumn {
@@ -196,7 +197,8 @@ export function renderEqualiser(ctx: EqCtx): void {
 
     const axisInk = hc ? fg : (ctx.axis.color || ctx.autoInk);
     if (showY) {
-        outer.append("text")
+        const axis = outer.append("g");
+        const label = axis.append("text")
             .attr("transform", "translate(9,122) rotate(-90)")
             .attr("text-anchor", "middle").attr("dominant-baseline", "middle")
             .attr("fill", axisInk)
@@ -204,9 +206,12 @@ export function renderEqualiser(ctx: EqCtx): void {
             .style("font-size", "11px").style("font-weight", "600")
             .style("letter-spacing", "0.06em")
             .text(ctx.axis.yTitle);
+        fitLabel(label.node() as SVGTextElement, ctx.axis.yTitle, 11, 210, 11);
+        axis.append("title").text(ctx.axis.yTitle);
     }
     if (showX) {
-        outer.append("text")
+        const axis = outer.append("g");
+        const label = axis.append("text")
             .attr("x", padL + coreW / 2).attr("y", designH - 8)
             .attr("text-anchor", "middle")
             .attr("fill", axisInk)
@@ -214,6 +219,8 @@ export function renderEqualiser(ctx: EqCtx): void {
             .style("font-size", "11px").style("font-weight", "600")
             .style("letter-spacing", "0.06em")
             .text(ctx.axis.xTitle);
+        fitLabel(label.node() as SVGTextElement, ctx.axis.xTitle, 11, coreW - 24, 11);
+        axis.append("title").text(ctx.axis.xTitle);
     }
 
     const g = outer.append("g").attr("transform", `translate(${padL},0)`);
@@ -274,9 +281,19 @@ export function renderEqualiser(ctx: EqCtx): void {
             .style("font-style", lf.italic ? "italic" : "normal")
             .style("letter-spacing", "0.04em")
             .text(col.label);
-        // A lone column has no neighbour to collide with, so its label is left
-        // exactly as it renders today.
-        if (n > 1) fitLabel(labelEl.node() as SVGTextElement, col.label, labelPx);
+        const node = labelEl.node() as SVGTextElement;
+        const box = node.getBBox();
+        // Keep glyphs below the meter and inside the label band, even when a
+        // short singleton does not trigger width-based fitting.
+        const heightRatio = Math.min(1, 15 / Math.max(1, 245 - box.y),
+            6 / Math.max(1, box.y + box.height - 245));
+        const fittedPx = labelPx * heightRatio;
+        if (heightRatio < 1) node.style.fontSize = `${fittedPx.toFixed(2)}px`;
+        const anchorPx = (ctx.width - designW * s) / 2 + (padL + lx) * s;
+        const singletonWidth = (anchor === "start" ? ctx.width - m - anchorPx
+            : anchor === "end" ? anchorPx - m
+                : 2 * Math.min(anchorPx - m, ctx.width - m - anchorPx)) / s;
+        fitLabel(node, col.label, fittedPx, n > 1 ? LABEL_PITCH : singletonWidth);
 
         // Transparent hit surface for tooltip/selection over the whole column.
         cg.append("rect")
