@@ -18,7 +18,7 @@ import DataView = powerbi.DataView;
 
 import { VisualFormattingSettingsModel, textAlignFor } from "./settings";
 
-import { toRgba, compositeOver, surfaceTone } from "./shared/colorHelpers";
+import { toRgba, compositeOver, surfaceTone, contrastInk } from "./shared/colorHelpers";
 import { Theme, accentToken } from "./shared/bandEngine";
 import { surfaceTokens } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
@@ -194,7 +194,7 @@ export class Visual implements IVisual {
 
             const cols = dv ? this.parseColumns(dv) : [];
             if (cols.length === 0) {
-                this.renderEmpty();
+                this.renderEmpty(this.emptyInk(surfaceHex));
                 this.events.renderingFinished(options);
                 return;
             }
@@ -396,11 +396,24 @@ export class Visual implements IVisual {
         return el.getBoundingClientRect().height || 24;
     }
 
+    /** Ink for the landing guidance. The stylesheet can only hard-code one
+     *  colour (`.codex-visual-empty` is #5e5d5a, the light-surface value), so it
+     *  stayed brand grey on an HC black canvas and on a dark page. Resolve it at
+     *  runtime instead: the HC foreground in high contrast, otherwise whichever
+     *  of the light-surface grey and the dark-theme text token has more contrast
+     *  on the surface actually painted (NEXUS re-review gap 2, cycle-04 §3
+     *  "landing guidance"). On a white surface this still returns #5e5d5a. */
+    private emptyInk(surfaceHex: string): string {
+        if (this.isHighContrast) return this.hcForeground;
+        return contrastInk(surfaceHex, "#5e5d5a", surfaceTokens("dark").text);
+    }
+
     // Landing state — fills the body so right-click reaches our DOM
     // regardless of which region the cert reviewer hits.
-    private renderEmpty(): void {
+    private renderEmpty(ink: string): void {
         const wrap = document.createElement("div");
         wrap.className = "codex-visual-empty";
+        wrap.style.color = ink;
         const h = document.createElement("div");
         h.className = "codex-visual-empty-title";
         h.textContent = "Codex Equalizer Bar";
