@@ -50,6 +50,44 @@ export function ramp(stops: [string, string, string], t: number): string {
     return t < 0.5 ? lerp(stops[0], stops[1], t * 2) : lerp(stops[1], stops[2], (t - 0.5) * 2);
 }
 
+/* ─── Label fitting (NEXUS cycle-04 §5) ────────────────────────────────────
+ * Columns sit on a fixed 34-unit pitch, so a label wider than that pitch runs
+ * into its neighbour: full weekday names overlapped in all six neighbouring
+ * pairs, and the three-letter labels overlapped at font size 24. The board
+ * design is not negotiable, so the label is fitted to it — measured first,
+ * shrunk to the layout's capacity down to a floor, then ellipsised. The full
+ * text stays available on hover through the column's own tooltip, which
+ * already carries the untruncated category.
+ */
+const LABEL_PITCH = 34;
+const LABEL_GUTTER = 2;
+const LABEL_MIN_PX = 6;
+
+function fitLabel(node: SVGTextElement, full: string, requestedPx: number): void {
+    // getComputedTextLength reports board units here: the scale transform lives
+    // on an ancestor group, so the text's own user space is the design box.
+    if (typeof node.getComputedTextLength !== "function") return;
+    const avail = LABEL_PITCH - LABEL_GUTTER;
+    let length = node.getComputedTextLength();
+    if (!(length > avail)) return;   // already fits — render is untouched
+
+    // Aim a hair inside the gutter: shrinking to exactly `avail` leaves the
+    // re-measure on the boundary, which ellipsised labels that in fact fit.
+    const shrunk = Math.max(LABEL_MIN_PX, requestedPx * (avail * 0.97 / length));
+    if (shrunk < requestedPx) {
+        node.style.fontSize = `${shrunk.toFixed(2)}px`;
+        length = node.getComputedTextLength();
+    }
+    if (!(length > avail)) return;
+
+    let cut = full;
+    while (cut.length > 1) {
+        cut = cut.slice(0, -1);
+        node.textContent = cut + "…";
+        if (node.getComputedTextLength() <= avail) return;
+    }
+}
+
 export interface EqColumn {
     label: string;
     value: number;      // raw
@@ -221,15 +259,17 @@ export function renderEqualiser(ctx: EqCtx): void {
         const lf = ctx.labelFont;
         const anchor = ctx.align === "left" ? "start" : ctx.align === "right" ? "end" : "middle";
         const lx = ctx.align === "left" ? x : ctx.align === "right" ? x + 26 : x + 13;
-        cg.append("text")
+        const labelPx = (lf.size && lf.size > 0) ? lf.size : 10.5;
+        const labelEl = cg.append("text")
             .attr("x", lx).attr("y", 245).attr("text-anchor", anchor)
             .attr("fill", hc ? fg : (lf.color || t.unit))
             .style("font-family", lf.family || "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
-            .style("font-size", `${(lf.size && lf.size > 0) ? lf.size : 10.5}px`)
+            .style("font-size", `${labelPx}px`)
             .style("font-weight", lf.bold ? "700" : "600")
             .style("font-style", lf.italic ? "italic" : "normal")
             .style("letter-spacing", "0.04em")
             .text(col.label);
+        fitLabel(labelEl.node() as SVGTextElement, col.label, labelPx);
 
         // Transparent hit surface for tooltip/selection over the whole column.
         cg.append("rect")
