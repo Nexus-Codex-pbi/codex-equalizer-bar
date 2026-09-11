@@ -77,6 +77,9 @@ export class Visual implements IVisual {
     // on every render, so they are released per render as well as on destroy.
     private ownListeners: Binding[] = [];
     private columnListeners: Binding[] = [];
+    /** Identity keys of the columns the previous render was built from, so an
+     *  update can tell a real data change from a format-only refresh. */
+    private lastCategorySignature = "";
 
     private licenseGate: LicenseGate;
 
@@ -274,12 +277,37 @@ export class Visual implements IVisual {
                 align: (ls.align.value as string) || "center",
                 onColumnEl: (el, i) => this.wireColumn(el, i, cols[i]),
             });
+            this.reconcileSelectionFromHost();
             this.applySelectionDim();
 
             this.events.renderingFinished(options);
         } catch (e) {
             this.events.renderingFailed(options, String(e));
         }
+    }
+
+    /** NEXUS cycle-04 §1: "track identity keys and reconcile against the current
+     *  columns/selection manager after updates."  The callback half landed in
+     *  round 2; this is the update half. The host is authoritative whenever it
+     *  reports a selection. When it reports none we only accept that as "cleared"
+     *  if the categories actually changed — otherwise a format-only update on a
+     *  host that momentarily reports nothing would silently drop a live dim. */
+    private reconcileSelectionFromHost(): void {
+        const signature = this.columnKeys.join(" ");
+        const categoriesChanged = signature !== this.lastCategorySignature;
+        this.lastCategorySignature = signature;
+
+        let hostIds: ISelectionId[] = [];
+        try {
+            hostIds = (this.selectionManager.getSelectionIds() || []) as ISelectionId[];
+        } catch {
+            hostIds = [];
+        }
+        const keys = hostIds
+            .filter(id => id && typeof id.getKey === "function")
+            .map(id => this.keyOf(id));
+
+        if (keys.length > 0 || categoriesChanged) this.selectedKeys = new Set(keys);
     }
 
     private bind(bucket: Binding[], el: EventTarget, type: string, fn: EventListener): void {
