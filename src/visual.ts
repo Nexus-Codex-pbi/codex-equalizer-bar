@@ -18,13 +18,13 @@ import DataView = powerbi.DataView;
 
 import { VisualFormattingSettingsModel, textAlignFor } from "./settings";
 
-import { toRgba, compositeOver, surfaceTone, contrastInk } from "./shared/colorHelpers";
+import { toRgba, compositeOver, surfaceTone, contrastInk, contrastRatio, mutedInk } from "./shared/colorHelpers";
 import { Theme, accentToken } from "./shared/bandEngine";
 import { surfaceTokens } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
 import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { applyBorder } from "./shared/borderSettings";
-import { renderEqualiser, EqColumn } from "./equaliser";
+import { renderEqualiser, EqColumn, eqTokens } from "./equaliser";
 import { LicenseGate } from "./shared/licensing";
 import { formatModelNumber } from "./shared/numberFormat";
 
@@ -199,7 +199,7 @@ export class Visual implements IVisual {
                 muted: false,
             });
 
-            const titleHeight = this.renderTitle(theme);
+            const titleHeight = this.renderTitle(theme, surfaceHex);
 
             const cols = dv ? this.parseColumns(dv) : [];
             if (cols.length === 0) {
@@ -240,6 +240,7 @@ export class Visual implements IVisual {
                 height: bodyHeight,
                 titleHeight: 0,
                 theme,
+                autoInk: this.adaptiveInk(surfaceHex, eqTokens(theme).unit),
                 hc: this.isHighContrast,
                 hcFg: this.hcForeground,
                 hcBg: this.hcBackground,
@@ -428,7 +429,7 @@ export class Visual implements IVisual {
         return out;
     }
 
-    private renderTitle(theme: Theme): number {
+    private renderTitle(theme: Theme, surfaceHex: string): number {
         const t = this.formattingSettings.titleSettings;
         if (!t?.showTitle?.value || !t?.titleText?.value) return 0;
         const el = document.createElement("div");
@@ -440,25 +441,23 @@ export class Visual implements IVisual {
         el.style.fontStyle = t.titleItalic?.value ? "italic" : "normal";
         el.style.textDecoration = t.titleUnderline?.value ? "underline" : "none";
         el.style.textAlign = textAlignFor(t.titleAlign?.value as string);
-        // Untouched default ink flips to the dark-theme text token (suite
-        // idiom); a user-set colour is honoured.
         const set = t.titleColor?.value?.value;
-        const c = set === "#1a1a2e" && theme === "dark" ? surfaceTokens("dark").text : set;
-        if (c) el.style.color = this.isHighContrast ? this.hcForeground : c;
+        const preferred = theme === "dark" ? surfaceTokens("dark").text : "#1a1a2e";
+        const c = set && set.toLowerCase() !== "#1a1a2e" ? set : this.adaptiveInk(surfaceHex, preferred);
+        el.style.color = this.isHighContrast ? this.hcForeground : c;
         this.rootDiv.appendChild(el);
         return el.getBoundingClientRect().height || 24;
     }
 
-    /** Ink for the landing guidance. The stylesheet can only hard-code one
-     *  colour (`.codex-visual-empty` is #5e5d5a, the light-surface value), so it
-     *  stayed brand grey on an HC black canvas and on a dark page. Resolve it at
-     *  runtime instead: the HC foreground in high contrast, otherwise whichever
-     *  of the light-surface grey and the dark-theme text token has more contrast
-     *  on the surface actually painted (NEXUS re-review gap 2, cycle-04 §3
-     *  "landing guidance"). On a white surface this still returns #5e5d5a. */
+    /** Keep readable board tokens; mid-tone surfaces need a stronger candidate. */
+    private adaptiveInk(surfaceHex: string, preferred: string): string {
+        if (contrastRatio(preferred, surfaceHex) >= 4.5) return preferred;
+        return mutedInk(contrastInk(surfaceHex, "#000000", "#ffffff"), surfaceHex);
+    }
+
     private emptyInk(surfaceHex: string): string {
         if (this.isHighContrast) return this.hcForeground;
-        return contrastInk(surfaceHex, "#5e5d5a", surfaceTokens("dark").text);
+        return this.adaptiveInk(surfaceHex, contrastInk(surfaceHex, "#5e5d5a", surfaceTokens("dark").text));
     }
 
     // Landing state — fills the body so right-click reaches our DOM

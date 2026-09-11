@@ -120,6 +120,7 @@ export interface EqCtx {
     height: number;
     titleHeight: number;
     theme: Theme;
+    autoInk: string;
     hc: boolean;
     hcFg: string;
     hcBg: string;
@@ -193,7 +194,7 @@ export function renderEqualiser(ctx: EqCtx): void {
     const outer = sel.append("g").attr("transform",
         `translate(${((ctx.width - designW * s) / 2).toFixed(2)},${(ctx.titleHeight + (availH - designH * s) / 2).toFixed(2)}) scale(${s.toFixed(4)})`);
 
-    const axisInk = hc ? fg : (ctx.axis.color || t.unit);
+    const axisInk = hc ? fg : (ctx.axis.color || ctx.autoInk);
     if (showY) {
         outer.append("text")
             .attr("transform", "translate(9,122) rotate(-90)")
@@ -266,7 +267,7 @@ export function renderEqualiser(ctx: EqCtx): void {
         const labelPx = (lf.size && lf.size > 0) ? lf.size : 10.5;
         const labelEl = cg.append("text")
             .attr("x", lx).attr("y", 245).attr("text-anchor", anchor)
-            .attr("fill", hc ? fg : (lf.color || t.unit))
+            .attr("fill", hc ? fg : (lf.color || ctx.autoInk))
             .style("font-family", lf.family || "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
             .style("font-size", `${labelPx}px`)
             .style("font-weight", lf.bold ? "700" : "600")
