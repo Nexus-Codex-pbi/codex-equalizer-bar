@@ -58,7 +58,7 @@ export class Visual implements IVisual {
     private events: IVisualEventService;
     private selectionManager: ISelectionManager;
     private tooltipService: ITooltipService;
-    private formattingSettings: VisualFormattingSettingsModel;
+    private formattingSettings = new VisualFormattingSettingsModel();
     private formattingSettingsService: FormattingSettingsService;
     private isHighContrast = false;
     private hcForeground = "";
