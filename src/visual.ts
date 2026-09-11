@@ -293,7 +293,7 @@ export class Visual implements IVisual {
      *  if the categories actually changed — otherwise a format-only update on a
      *  host that momentarily reports nothing would silently drop a live dim. */
     private reconcileSelectionFromHost(): void {
-        const signature = this.columnKeys.join(" ");
+        const signature = this.columnKeys.join("\u0000");
         const categoriesChanged = signature !== this.lastCategorySignature;
         this.lastCategorySignature = signature;
 
