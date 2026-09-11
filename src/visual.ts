@@ -110,7 +110,7 @@ export class Visual implements IVisual {
         this.tooltipService = options.host.tooltipService;
         this.formattingSettingsService = new FormattingSettingsService();
 
-        // Single context menu listener — Policy 1180.2.5 (MS sample BarChart pattern).
+        // Blank-canvas context menu; column handlers stop propagation.
         this.bind(this.ownListeners, this.target, "contextmenu", (e: MouseEvent) => {
             this.selectionManager.showContextMenu({}, { x: e.clientX, y: e.clientY });
             e.preventDefault();
@@ -345,6 +345,11 @@ export class Visual implements IVisual {
         const key = this.keyOf(col.selectionId);
         this.columnKeys[index] = key;
         el.style.cursor = "pointer";
+        this.bind(this.columnListeners, el, "contextmenu", (e: MouseEvent) => {
+            this.selectionManager.showContextMenu(col.selectionId, { x: e.clientX, y: e.clientY });
+            e.preventDefault();
+            e.stopPropagation();
+        });
         this.bind(this.columnListeners, el, "mousemove", (e: MouseEvent) => {
             this.tooltipService.show({
                 coordinates: [e.clientX, e.clientY],
