@@ -77,9 +77,8 @@ export class Visual implements IVisual {
     // on every render, so they are released per render as well as on destroy.
     private ownListeners: Binding[] = [];
     private columnListeners: Binding[] = [];
-    /** Identity keys of the columns the previous render was built from, so an
-     *  update can tell a real data change from a format-only refresh. */
-    private lastCategorySignature = "";
+    private selectionRevision = 0;
+    private destroyed = false;
 
     private licenseGate: LicenseGate;
 
@@ -131,23 +130,17 @@ export class Visual implements IVisual {
         // emptying it. An empty report means nothing is selected, which is the only case
         // that renders as it did before (NEXUS cycle-04 §1).
         this.selectionManager.registerOnSelectCallback((ids: ISelectionId[]) => {
-            this.selectedKeys = new Set(
-                (ids || []).filter(id => id && typeof id.getKey === "function").map(id => this.keyOf(id))
-            );
-            this.applySelectionDim();
+            if (this.destroyed) return;
+            ++this.selectionRevision;
+            this.setSelection(ids);
         });
 
         // Click on empty canvas clears selection.
-        this.bind(this.ownListeners, this.rootDiv, "click", () => {
-            if (this.selectedKeys.size) {
-                this.selectionManager.clear();
-                this.selectedKeys.clear();
-                this.applySelectionDim();
-            }
-        });
+        this.bind(this.ownListeners, this.rootDiv, "click", () => this.clearSelection());
     }
 
     public update(options: VisualUpdateOptions): void {
+        if (this.destroyed) return;
         this.events.renderingStarted(options);
         this.lastUpdateOptions = options;
 
@@ -175,6 +168,7 @@ export class Visual implements IVisual {
             this.release(this.columnListeners);
             this.columnEls = [];
             this.columnKeys = [];
+            this.reconcileSelectionFromHost();
 
             // ── Theme + suite chrome ──
             const background = this.formattingSettings.background;
@@ -277,7 +271,6 @@ export class Visual implements IVisual {
                 align: (ls.align.value as string) || "center",
                 onColumnEl: (el, i) => this.wireColumn(el, i, cols[i]),
             });
-            this.reconcileSelectionFromHost();
             this.applySelectionDim();
 
             this.events.renderingFinished(options);
@@ -286,28 +279,45 @@ export class Visual implements IVisual {
         }
     }
 
-    /** NEXUS cycle-04 §1: "track identity keys and reconcile against the current
-     *  columns/selection manager after updates."  The callback half landed in
-     *  round 2; this is the update half. The host is authoritative whenever it
-     *  reports a selection. When it reports none we only accept that as "cleared"
-     *  if the categories actually changed — otherwise a format-only update on a
-     *  host that momentarily reports nothing would silently drop a live dim. */
+    /** A successful host read is authoritative, including an empty selection. */
     private reconcileSelectionFromHost(): void {
-        const signature = this.columnKeys.join("\u0000");
-        const categoriesChanged = signature !== this.lastCategorySignature;
-        this.lastCategorySignature = signature;
-
-        let hostIds: ISelectionId[] = [];
+        ++this.selectionRevision;
         try {
-            hostIds = (this.selectionManager.getSelectionIds() || []) as ISelectionId[];
+            this.setSelection(this.selectionManager.getSelectionIds() as ISelectionId[]);
         } catch {
-            hostIds = [];
+            // A failed read is not evidence that the host cleared selection.
         }
-        const keys = hostIds
-            .filter(id => id && typeof id.getKey === "function")
-            .map(id => this.keyOf(id));
+    }
 
-        if (keys.length > 0 || categoriesChanged) this.selectedKeys = new Set(keys);
+    private setSelection(ids: ISelectionId[]): void {
+        this.selectedKeys = new Set((ids || [])
+            .filter(id => id && typeof id.getKey === "function")
+            .map(id => this.keyOf(id)));
+        this.applySelectionDim();
+    }
+
+    private clearSelection(): void {
+        const revision = ++this.selectionRevision;
+        this.setSelection([]);
+        this.selectionManager.clear().then(
+            () => {},
+            () => {
+                if (!this.destroyed && revision === this.selectionRevision) this.reconcileSelectionFromHost();
+            }
+        );
+    }
+
+    private selectColumn(col: ColumnData, multi: boolean): void {
+        const revision = ++this.selectionRevision;
+        this.selectionManager.select(col.selectionId, multi).then(
+            (ids: ISelectionId[]) => {
+                // A callback, update, clear or newer click supersedes this reply.
+                if (!this.destroyed && revision === this.selectionRevision) this.setSelection(ids);
+            },
+            () => {
+                if (!this.destroyed && revision === this.selectionRevision) this.reconcileSelectionFromHost();
+            }
+        );
     }
 
     private bind(bucket: Binding[], el: EventTarget, type: string, fn: EventListener): void {
@@ -342,14 +352,7 @@ export class Visual implements IVisual {
             this.tooltipService.hide({ isTouchEvent: false, immediately: false });
         });
         this.bind(this.columnListeners, el, "click", (e: MouseEvent) => {
-            const multi = e.ctrlKey || e.metaKey;
-            this.selectionManager.select(col.selectionId, multi).then((ids: ISelectionId[]) => {
-                if (!multi) this.selectedKeys.clear();
-                if (ids.length === 0) this.selectedKeys.clear();
-                else if (this.selectedKeys.has(key) && multi) this.selectedKeys.delete(key);
-                else this.selectedKeys.add(key);
-                this.applySelectionDim();
-            });
+            this.selectColumn(col, e.ctrlKey || e.metaKey);
             e.stopPropagation();
         });
     }
@@ -490,6 +493,9 @@ export class Visual implements IVisual {
         // Drop the in-flight licence check FIRST: its redraw callback replays
         // update() against a torn-down target otherwise (NEXUS lifecycle finding).
         this.licenseGate.dispose();
+        this.destroyed = true;
+        ++this.selectionRevision;
+        this.selectionManager.registerOnSelectCallback(() => {});
         // Release what this visual owns, not just its child DOM: a node the host
         // still holds must not answer tooltip, selection or context-menu dispatch
         // after teardown (NEXUS re-review gap 3).
