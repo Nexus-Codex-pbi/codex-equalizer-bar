@@ -166,6 +166,7 @@ export class Visual implements IVisual {
             this.formattingSettings = this.formattingSettingsService
                 .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv);
 
+            const focusedKey = this.columnKeys[this.columnEls.findIndex(el => el === document.activeElement)];
             while (this.rootDiv.firstChild) this.rootDiv.removeChild(this.rootDiv.firstChild);
             this.svg = null;
             // The column elements about to be discarded still carry our listeners.
@@ -186,6 +187,8 @@ export class Visual implements IVisual {
             const behindHex = this.isHighContrast ? this.hcBackground : pageBehind(colorPalette);
             const surfaceHex = compositeOver(bgHex, bgTransparencyPct, behindHex);
             const theme: Theme = surfaceTone(surfaceHex);
+            this.target.style.setProperty("--equaliser-focus-ink", this.isHighContrast
+                ? this.hcForeground : this.adaptiveInk(surfaceHex, "#1a1a2e"));
             this.target.style.background = this.isHighContrast
                 ? this.hcBackground : toRgba(bgHex, bgTransparencyPct);
             applyBorder(this.target, this.formattingSettings.visualBorder, {
@@ -277,6 +280,9 @@ export class Visual implements IVisual {
                 onColumnEl: (el, i) => this.wireColumn(el, i, cols[i]),
             });
             this.applySelectionDim();
+            if (focusedKey !== undefined) {
+                this.columnEls[this.columnKeys.indexOf(focusedKey)]?.focus();
+            }
 
             this.events.renderingFinished(options);
         } catch (e) {
@@ -344,25 +350,56 @@ export class Visual implements IVisual {
         this.columnEls[index] = el;
         const key = this.keyOf(col.selectionId);
         this.columnKeys[index] = key;
+        el.classList.add("codex-equaliser-column");
+        el.setAttribute("tabindex", index === 0 ? "0" : "-1");
+        el.setAttribute("role", "button");
+        el.setAttribute("aria-label", col.tooltipItems.map(item => `${item.displayName}: ${item.value}`).join(", "));
         el.style.cursor = "pointer";
         this.bind(this.columnListeners, el, "contextmenu", (e: MouseEvent) => {
             this.selectionManager.showContextMenu(col.selectionId, { x: e.clientX, y: e.clientY });
             e.preventDefault();
             e.stopPropagation();
         });
-        this.bind(this.columnListeners, el, "mousemove", (e: MouseEvent) => {
+        const showTooltip = (x: number, y: number) => {
             this.tooltipService.show({
-                coordinates: [e.clientX, e.clientY],
+                coordinates: [x, y],
                 isTouchEvent: false,
                 dataItems: col.tooltipItems,
                 identities: [col.selectionId],
             });
+        };
+        this.bind(this.columnListeners, el, "mousemove", (e: MouseEvent) => showTooltip(e.clientX, e.clientY));
+        this.bind(this.columnListeners, el, "focus", () => {
+            this.columnEls.forEach(column => column.setAttribute("tabindex", column === el ? "0" : "-1"));
+            const bounds = el.getBoundingClientRect();
+            showTooltip(bounds.left + bounds.width / 2, bounds.bottom);
         });
         this.bind(this.columnListeners, el, "mouseleave", () => {
             this.tooltipService.hide({ isTouchEvent: false, immediately: false });
         });
         this.bind(this.columnListeners, el, "click", (e: MouseEvent) => {
+            el.focus();
             this.selectColumn(col, e.ctrlKey || e.metaKey);
+            e.stopPropagation();
+        });
+        this.bind(this.columnListeners, el, "blur", () => {
+            this.tooltipService.hide({ isTouchEvent: false, immediately: true });
+        });
+        this.bind(this.columnListeners, el, "keydown", (e: KeyboardEvent) => {
+            const current = this.columnEls.indexOf(el);
+            let next = current;
+            if (e.key === "ArrowLeft") next = Math.max(0, current - 1);
+            else if (e.key === "ArrowRight") next = Math.min(this.columnEls.length - 1, current + 1);
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = this.columnEls.length - 1;
+            else if (e.key === "Enter" || e.key === " ") this.selectColumn(col, e.ctrlKey || e.metaKey);
+            else if (e.key === "Escape") this.clearSelection();
+            else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+                const bounds = el.getBoundingClientRect();
+                this.selectionManager.showContextMenu(col.selectionId, { x: bounds.left, y: bounds.top });
+            } else return;
+            if (next !== current) this.columnEls[next]?.focus();
+            e.preventDefault();
             e.stopPropagation();
         });
     }
@@ -374,7 +411,11 @@ export class Visual implements IVisual {
     private applySelectionDim(): void {
         const any = this.selectedKeys.size > 0;
         this.columnEls.forEach((el, i) => {
-            if (el) el.style.opacity = any && !this.selectedKeys.has(this.columnKeys[i]) ? "0.35" : "1";
+            if (el) {
+                const selected = this.selectedKeys.has(this.columnKeys[i]);
+                el.style.opacity = any && !selected ? "0.35" : "1";
+                el.setAttribute("aria-pressed", String(selected));
+            }
         });
     }
 
