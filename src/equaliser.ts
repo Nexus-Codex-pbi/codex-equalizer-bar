@@ -277,7 +277,7 @@ export function renderEqualiser(ctx: EqCtx): void {
             .attr("fill", hc ? fg : (lf.color || ctx.autoInk))
             .style("font-family", lf.family || "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
             .style("font-size", `${labelPx}px`)
-            .style("font-weight", lf.bold ? "700" : "600")
+            .style("font-weight", lf.bold ? "700" : "400")
             .style("font-style", lf.italic ? "italic" : "normal")
             .style("letter-spacing", "0.04em")
             .text(col.label);
