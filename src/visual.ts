@@ -18,7 +18,7 @@ import DataView = powerbi.DataView;
 
 import { VisualFormattingSettingsModel, textAlignFor } from "./settings";
 
-import { toRgba } from "./shared/colorHelpers";
+import { toRgba, compositeOver, surfaceTone } from "./shared/colorHelpers";
 import { Theme, accentToken } from "./shared/bandEngine";
 import { surfaceTokens } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
@@ -28,12 +28,13 @@ import { renderEqualiser, EqColumn } from "./equaliser";
 import { LicenseGate } from "./shared/licensing";
 import { formatModelNumber } from "./shared/numberFormat";
 
-/** Luminance theme pick off the shared Background card (suite idiom). */
-function themeFor(hex: string): Theme {
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/i.exec(hex || "");
-    if (!m) return "light";
-    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5 ? "dark" : "light";
+/** The page colour our tile is painted onto. The host theme background when it
+ *  gives a usable hex; otherwise white, stated explicitly rather than guessed —
+ *  an unknown page-surface override must not masquerade as a measured one
+ *  (NEXUS cycle-04 §3). */
+function pageBehind(palette: ISandboxExtendedColorPalette): string {
+    const raw = palette?.background?.value;
+    return /^#[0-9a-fA-F]{6}$/.test(raw || "") ? raw : "#ffffff";
 }
 
 interface ColumnData extends EqColumn {
@@ -160,7 +161,14 @@ export class Visual implements IVisual {
             const background = this.formattingSettings.background;
             const bgHex = background.backgroundColor.value?.value ?? "#ffffff";
             const bgTransparencyPct = background.transparency.value ?? 100;
-            const theme: Theme = themeFor(bgHex);
+            // Adaptive ink must be judged against the surface a viewer actually
+            // sees, not the configured hex: white at 100% transparency over a dark
+            // page kept light-theme ink, and black at 95% over white picked dark
+            // ink for a 5%-black surface (NEXUS cycle-04 §3). Composite first, then
+            // pick the tone — this feeds labels, tracks, title and axis ink alike.
+            const behindHex = this.isHighContrast ? this.hcBackground : pageBehind(colorPalette);
+            const surfaceHex = compositeOver(bgHex, bgTransparencyPct, behindHex);
+            const theme: Theme = surfaceTone(surfaceHex);
             this.target.style.background = this.isHighContrast
                 ? this.hcBackground : toRgba(bgHex, bgTransparencyPct);
             applyBorder(this.target, this.formattingSettings.visualBorder, {
