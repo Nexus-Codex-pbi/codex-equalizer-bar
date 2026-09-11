@@ -41,6 +41,9 @@ function pageBehind(palette: ISandboxExtendedColorPalette): string {
  *  to emit negative SVG dimensions (NEXUS cycle-04 §4). */
 const MIN_BODY_PX = 24;
 
+/** A listener this visual attached and is therefore responsible for removing. */
+interface Binding { el: EventTarget; type: string; fn: EventListener }
+
 interface ColumnData extends EqColumn {
     sortOrder: number | null;
     selectionId: ISelectionId;
@@ -67,6 +70,13 @@ export class Visual implements IVisual {
     // sits at that index (NEXUS cycle-04 §1).
     private columnKeys: string[] = [];
     private selectedKeys = new Set<string>();
+    // destroy() cleared child DOM but not the listeners this visual owns, so a
+    // retained detached node still answered tooltip, selection and context-menu
+    // dispatch after teardown (NEXUS re-review gap 3). Track every listener we
+    // attach so teardown can actually release it. Column listeners are re-bound
+    // on every render, so they are released per render as well as on destroy.
+    private ownListeners: Binding[] = [];
+    private columnListeners: Binding[] = [];
 
     private licenseGate: LicenseGate;
 
@@ -95,7 +105,7 @@ export class Visual implements IVisual {
         this.formattingSettingsService = new FormattingSettingsService();
 
         // Single context menu listener — Policy 1180.2.5 (MS sample BarChart pattern).
-        this.target.addEventListener("contextmenu", (e: MouseEvent) => {
+        this.bind(this.ownListeners, this.target, "contextmenu", (e: MouseEvent) => {
             this.selectionManager.showContextMenu({}, { x: e.clientX, y: e.clientY });
             e.preventDefault();
         });
@@ -125,7 +135,7 @@ export class Visual implements IVisual {
         });
 
         // Click on empty canvas clears selection.
-        this.rootDiv.addEventListener("click", () => {
+        this.bind(this.ownListeners, this.rootDiv, "click", () => {
             if (this.selectedKeys.size) {
                 this.selectionManager.clear();
                 this.selectedKeys.clear();
@@ -158,6 +168,8 @@ export class Visual implements IVisual {
 
             while (this.rootDiv.firstChild) this.rootDiv.removeChild(this.rootDiv.firstChild);
             this.svg = null;
+            // The column elements about to be discarded still carry our listeners.
+            this.release(this.columnListeners);
             this.columnEls = [];
             this.columnKeys = [];
 
@@ -270,6 +282,16 @@ export class Visual implements IVisual {
         }
     }
 
+    private bind(bucket: Binding[], el: EventTarget, type: string, fn: EventListener): void {
+        el.addEventListener(type, fn);
+        bucket.push({ el, type, fn });
+    }
+
+    private release(bucket: Binding[]): void {
+        for (const b of bucket) b.el.removeEventListener(b.type, b.fn);
+        bucket.length = 0;
+    }
+
     /** Identity key for a column's selection id — the handle selection state is kept under. */
     private keyOf(id: ISelectionId): string {
         return String(id.getKey());
@@ -280,7 +302,7 @@ export class Visual implements IVisual {
         const key = this.keyOf(col.selectionId);
         this.columnKeys[index] = key;
         el.style.cursor = "pointer";
-        el.addEventListener("mousemove", (e: MouseEvent) => {
+        this.bind(this.columnListeners, el, "mousemove", (e: MouseEvent) => {
             this.tooltipService.show({
                 coordinates: [e.clientX, e.clientY],
                 isTouchEvent: false,
@@ -288,10 +310,10 @@ export class Visual implements IVisual {
                 identities: [col.selectionId],
             });
         });
-        el.addEventListener("mouseleave", () => {
+        this.bind(this.columnListeners, el, "mouseleave", () => {
             this.tooltipService.hide({ isTouchEvent: false, immediately: false });
         });
-        el.addEventListener("click", (e: MouseEvent) => {
+        this.bind(this.columnListeners, el, "click", (e: MouseEvent) => {
             const multi = e.ctrlKey || e.metaKey;
             this.selectionManager.select(col.selectionId, multi).then((ids: ISelectionId[]) => {
                 if (!multi) this.selectedKeys.clear();
@@ -440,6 +462,17 @@ export class Visual implements IVisual {
         // Drop the in-flight licence check FIRST: its redraw callback replays
         // update() against a torn-down target otherwise (NEXUS lifecycle finding).
         this.licenseGate.dispose();
+        // Release what this visual owns, not just its child DOM: a node the host
+        // still holds must not answer tooltip, selection or context-menu dispatch
+        // after teardown (NEXUS re-review gap 3).
+        this.release(this.columnListeners);
+        this.release(this.ownListeners);
+        this.cornerSignature?.destroy();
+        this.cornerSignature = null;
+        this.columnEls = [];
+        this.columnKeys = [];
+        this.selectedKeys.clear();
+        this.lastUpdateOptions = null;
         while (this.rootDiv && this.rootDiv.firstChild) this.rootDiv.removeChild(this.rootDiv.firstChild);
         this.rootDiv = null;
         this.target = null;
