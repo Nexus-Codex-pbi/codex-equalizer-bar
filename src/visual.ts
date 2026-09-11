@@ -57,7 +57,11 @@ export class Visual implements IVisual {
     private hcBackground = "";
     private cornerSignature: CardSignatureHandle | null = null;
     private columnEls: SVGGElement[] = [];
-    private selectedIdx = new Set<number>();
+    // Selection state is held as identity keys, never display indices: a re-sort or a
+    // filtered-out category would otherwise hand the lit state to whichever column now
+    // sits at that index (NEXUS cycle-04 §1).
+    private columnKeys: string[] = [];
+    private selectedKeys = new Set<string>();
 
     private licenseGate: LicenseGate;
 
@@ -104,15 +108,15 @@ export class Visual implements IVisual {
         );
 
         this.selectionManager.registerOnSelectCallback(() => {
-            this.selectedIdx.clear();
+            this.selectedKeys.clear();
             this.applySelectionDim();
         });
 
         // Click on empty canvas clears selection.
         this.rootDiv.addEventListener("click", () => {
-            if (this.selectedIdx.size) {
+            if (this.selectedKeys.size) {
                 this.selectionManager.clear();
-                this.selectedIdx.clear();
+                this.selectedKeys.clear();
                 this.applySelectionDim();
             }
         });
@@ -143,6 +147,7 @@ export class Visual implements IVisual {
             while (this.rootDiv.firstChild) this.rootDiv.removeChild(this.rootDiv.firstChild);
             this.svg = null;
             this.columnEls = [];
+            this.columnKeys = [];
 
             // ── Theme + suite chrome ──
             const background = this.formattingSettings.background;
@@ -235,8 +240,15 @@ export class Visual implements IVisual {
         }
     }
 
+    /** Identity key for a column's selection id — the handle selection state is kept under. */
+    private keyOf(id: ISelectionId): string {
+        return String(id.getKey());
+    }
+
     private wireColumn(el: SVGGElement, index: number, col: ColumnData): void {
         this.columnEls[index] = el;
+        const key = this.keyOf(col.selectionId);
+        this.columnKeys[index] = key;
         el.style.cursor = "pointer";
         el.addEventListener("mousemove", (e: MouseEvent) => {
             this.tooltipService.show({
@@ -252,20 +264,24 @@ export class Visual implements IVisual {
         el.addEventListener("click", (e: MouseEvent) => {
             const multi = e.ctrlKey || e.metaKey;
             this.selectionManager.select(col.selectionId, multi).then((ids: ISelectionId[]) => {
-                if (!multi) this.selectedIdx.clear();
-                if (ids.length === 0) this.selectedIdx.clear();
-                else if (this.selectedIdx.has(index) && multi) this.selectedIdx.delete(index);
-                else this.selectedIdx.add(index);
+                if (!multi) this.selectedKeys.clear();
+                if (ids.length === 0) this.selectedKeys.clear();
+                else if (this.selectedKeys.has(key) && multi) this.selectedKeys.delete(key);
+                else this.selectedKeys.add(key);
                 this.applySelectionDim();
             });
             e.stopPropagation();
         });
     }
 
+    // Reconciles the retained identity keys against the columns as they stand now, so a
+    // data/format update that re-sorts or drops rows re-lights the category that is
+    // actually selected. A selected category that has left the data lights nothing — its
+    // state is never transferred to the row that took its place (NEXUS cycle-04 §1).
     private applySelectionDim(): void {
-        const any = this.selectedIdx.size > 0;
+        const any = this.selectedKeys.size > 0;
         this.columnEls.forEach((el, i) => {
-            if (el) el.style.opacity = any && !this.selectedIdx.has(i) ? "0.35" : "1";
+            if (el) el.style.opacity = any && !this.selectedKeys.has(this.columnKeys[i]) ? "0.35" : "1";
         });
     }
 
