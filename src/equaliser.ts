@@ -139,8 +139,15 @@ export function renderEqualiser(ctx: EqCtx): void {
     const sel = select(ctx.group);
     sel.selectAll("*").remove();
     const availH = Math.max(10, ctx.height - ctx.titleHeight);
-    const m = Math.max(8, Math.min(ctx.width, availH) * 0.05);
+    // The 8-unit minimum margin was applied without checking it fitted: at 8x8 it
+    // consumed more than the viewport, so (width - 2m) went negative and the whole
+    // board rendered mirrored at scale(-0.0296) (NEXUS cycle-04 §4). Cap the
+    // margin at a quarter of the shorter side — that only bites below 32px, so
+    // ordinary tiles keep the exact margin and scale they had.
+    const minSide = Math.min(ctx.width, availH);
+    const m = Math.min(Math.max(8, minSide * 0.05), minSide / 4);
     const s = Math.min((ctx.width - 2 * m) / designW, (availH - 2 * m) / designH);
+    if (!(s > 0) || !isFinite(s)) return;
     const outer = sel.append("g").attr("transform",
         `translate(${((ctx.width - designW * s) / 2).toFixed(2)},${(ctx.titleHeight + (availH - designH * s) / 2).toFixed(2)}) scale(${s.toFixed(4)})`);
 

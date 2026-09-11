@@ -37,6 +37,10 @@ function pageBehind(palette: ISandboxExtendedColorPalette): string {
     return /^#[0-9a-fA-F]{6}$/.test(raw || "") ? raw : "#ffffff";
 }
 
+/** Below this the board cannot draw meaningful geometry; anything smaller used
+ *  to emit negative SVG dimensions (NEXUS cycle-04 §4). */
+const MIN_BODY_PX = 24;
+
 interface ColumnData extends EqColumn {
     sortOrder: number | null;
     selectionId: ISelectionId;
@@ -201,9 +205,20 @@ export class Visual implements IVisual {
             const width = options.viewport.width;
             const height = options.viewport.height;
 
+            // `height - titleHeight` reached the SVG unchecked: a 30px tile whose
+            // title wrapped to 84px emitted height="-54" and a mirrored chart
+            // (NEXUS cycle-04 §4). Clamp the body, then adopt an explicit
+            // too-small state rather than feeding degenerate geometry to the fit
+            // transform — the title has already been rendered and keeps the tile.
+            const bodyHeight = Math.max(0, height - titleHeight);
+            if (width < MIN_BODY_PX || bodyHeight < MIN_BODY_PX) {
+                this.events.renderingFinished(options);
+                return;
+            }
+
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.setAttribute("width", String(width));
-            svg.setAttribute("height", String(height - titleHeight));
+            svg.setAttribute("height", String(bodyHeight));
             svg.style.display = "block";
             const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
             svg.appendChild(group);
@@ -213,7 +228,7 @@ export class Visual implements IVisual {
             renderEqualiser({
                 group,
                 width,
-                height: height - titleHeight,
+                height: bodyHeight,
                 titleHeight: 0,
                 theme,
                 hc: this.isHighContrast,
