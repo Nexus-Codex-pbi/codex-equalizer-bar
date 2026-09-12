@@ -24,6 +24,7 @@ import { surfaceTokens } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
 import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { applyBorder } from "./shared/borderSettings";
+import { resolveCodexTheme, neonColorFor, neonShadow, ResolvedCodexTheme } from "./shared/codexThemeSettings";
 import { renderEqualiser, EqColumn, eqTokens } from "./equaliser";
 import { LicenseGate } from "./shared/licensing";
 import { formatModelNumber } from "./shared/numberFormat";
@@ -188,12 +189,27 @@ export class Visual implements IVisual {
             // ink for a 5%-black surface (NEXUS cycle-04 §3). Composite first, then
             // pick the tone — this feeds labels, tracks, title and axis ink alike.
             const behindHex = this.isHighContrast ? this.hcBackground : pageBehind(colorPalette);
-            const surfaceHex = compositeOver(bgHex, bgTransparencyPct, behindHex);
-            const theme: Theme = surfaceTone(surfaceHex);
+            const autoTheme: Theme = surfaceTone(compositeOver(bgHex, bgTransparencyPct, behindHex));
+            // Nexus Codex Theme (#819): ONE switch above the derivation just made.
+            // Auto hands back exactly those values (byte-for-byte the shipped
+            // render); Dark/Light/Neon paint the Codex card surface at the card's
+            // own Surface Transparency and force the token set. High contrast has
+            // already collapsed to Auto inside the resolver — no HC branch here.
+            const codex = resolveCodexTheme(this.formattingSettings.codexTheme, {
+                hcActive: this.isHighContrast, autoTheme,
+                autoBgHex: bgHex, autoTransparencyPct: bgTransparencyPct, behindHex,
+            });
+            const theme: Theme = codex.theme;
+            const surfaceHex = codex.surfaceHex;
+            // A forced mode OWNS the text inks (title, axis titles, column
+            // labels) against its own surface: a pane ink chosen for a white
+            // tile is not a choice about the Codex dark surface. Band, spectrum,
+            // border and signature colours stay the user's.
+            const inkOverride = codex.mode !== "auto";
             this.target.style.setProperty("--equaliser-focus-ink", this.isHighContrast
                 ? this.hcForeground : this.adaptiveInk(surfaceHex, "#1a1a2e"));
             this.target.style.background = this.isHighContrast
-                ? this.hcBackground : toRgba(bgHex, bgTransparencyPct);
+                ? this.hcBackground : toRgba(codex.bgHex, codex.transparencyPct);
             applyBorder(this.target, this.formattingSettings.visualBorder, {
                 hcActive: this.isHighContrast,
                 hcColor: this.hcForeground,
@@ -201,15 +217,15 @@ export class Visual implements IVisual {
                 metadataObjects: undefined,
             });
             applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
-                autoHex: accentToken(theme),
+                autoHex: neonColorFor(accentToken(theme), codex),
                 hcActive: this.isHighContrast,
                 hcColor: this.hcForeground,
                 mirror: true,
-                glowMix: this.isHighContrast ? 0 : (theme === "dark" ? 55 : 0),
+                glowMix: this.isHighContrast ? 0 : codex.neon ? codex.glow : (theme === "dark" ? 55 : 0),
                 muted: false,
             });
 
-            const titleHeight = this.renderTitle(theme, surfaceHex);
+            const titleHeight = this.renderTitle(theme, surfaceHex, codex, inkOverride);
 
             const cols = dv ? this.parseColumns(dv) : [];
             if (cols.length === 0) {
@@ -251,6 +267,8 @@ export class Visual implements IVisual {
                 titleHeight: 0,
                 theme,
                 autoInk: this.adaptiveInk(surfaceHex, eqTokens(theme).unit),
+                codex,
+                inkOverride,
                 hc: this.isHighContrast,
                 hcFg: this.hcForeground,
                 hcBg: this.hcBackground,
@@ -483,7 +501,7 @@ export class Visual implements IVisual {
         return out;
     }
 
-    private renderTitle(theme: Theme, surfaceHex: string): number {
+    private renderTitle(theme: Theme, surfaceHex: string, codex: ResolvedCodexTheme, inkOverride: boolean): number {
         const t = this.formattingSettings.titleSettings;
         if (!t?.showTitle?.value || !t?.titleText?.value) return 0;
         const el = document.createElement("div");
@@ -497,8 +515,15 @@ export class Visual implements IVisual {
         el.style.textAlign = textAlignFor(t.titleAlign?.value as string);
         const set = t.titleColor?.value?.value;
         const preferred = theme === "dark" ? surfaceTokens("dark").text : "#1a1a2e";
-        const c = set && set.toLowerCase() !== "#1a1a2e" ? set : this.adaptiveInk(surfaceHex, preferred);
+        // Adapt when the mode FORCES the surface, or when the user left the ink
+        // at its default — the pane swatch still wins in Auto (#819).
+        const c = !inkOverride && set && set.toLowerCase() !== "#1a1a2e"
+            ? set : this.adaptiveInk(surfaceHex, preferred);
         el.style.color = this.isHighContrast ? this.hcForeground : c;
+        // Neon: the title is this visual's headline, and the only text allowed
+        // to flare — column and axis labels are smaller body text.
+        el.style.textShadow = codex.neon && !this.isHighContrast
+            ? neonShadow(neonColorFor(c, codex), codex.glow) : "";
         this.rootDiv.appendChild(el);
         return el.getBoundingClientRect().height || 24;
     }
@@ -539,6 +564,7 @@ export class Visual implements IVisual {
     }
 
     public getFormattingModel(): powerbi.visuals.FormattingModel {
+        this.formattingSettings.codexTheme.reveal();
         return this.formattingSettingsService.buildFormattingModel(this.formattingSettings);
     }
 

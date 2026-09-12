@@ -8,6 +8,7 @@ import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
 
 import { BackgroundSettings } from "./shared/backgroundSettings";
+import { CodexThemeSettings } from "./shared/codexThemeSettings";
 import { BorderSettings } from "./shared/borderSettings";
 import { CardSignatureSettings } from "./shared/cardSignatureSettings";
 
@@ -138,8 +139,9 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     titleSettings = new TitleSettingsCard();
     labelStyle = new LabelStyleCard();
     background = new BackgroundSettings();
+    codexTheme = new CodexThemeSettings();
     cardSignature = new CardSignatureSettings();
     visualBorder = new BorderSettings();
 
-    cards = [this.equaliser, this.axisSettings, this.titleSettings, this.labelStyle, this.background, this.cardSignature, this.visualBorder];
+    cards = [this.equaliser, this.axisSettings, this.titleSettings, this.labelStyle, this.background, this.codexTheme, this.cardSignature, this.visualBorder];
 }
