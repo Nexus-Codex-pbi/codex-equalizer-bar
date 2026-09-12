@@ -11,7 +11,8 @@
 
 import { select, Selection } from "d3-selection";
 import { Theme } from "./shared/bandEngine";
-import { ResolvedCodexTheme, neonColorFor, neonFilter } from "./shared/codexThemeSettings";
+import { ResolvedCodexTheme, forcedInk, neonFilter } from "./shared/codexThemeSettings";
+import { surfaceTokens } from "./shared/designTokens";
 
 export interface EqTokens {
     sg: string; sa: string; sm: string;   // band colours: floor / shoulder / crest
@@ -126,8 +127,6 @@ export interface EqCtx {
     /** The ONE resolved Nexus Codex Theme (#819) — resolved in visual.ts and
      *  routed through here; never resolved a second time. */
     codex: ResolvedCodexTheme;
-    /** A forced mode owns the label/axis inks against its own surface. */
-    inkOverride: boolean;
     hc: boolean;
     hcFg: string;
     hcBg: string;
@@ -171,6 +170,11 @@ export function renderEqualiser(ctx: EqCtx): void {
     const sa = ctx.bandOverride.sa || t.sa;
     const sm = ctx.bandOverride.sm || t.sm;
 
+    // The unlit stubs are housing, not data, so under a forced mode they take
+    // that mode's own track token rather than the board's tone-authored stub
+    // (#819 rule 2). Auto keeps the board colour byte-for-byte.
+    const trackFill = ctx.codex.mode === "auto" ? t.track : surfaceTokens(ctx.codex.theme).track;
+
     // Board maths (verbatim): pitch 210 across the meter, blocks 26 wide.
     const pitch = 210 / rows;
     const h = +Math.max(pitch - 3, 3).toFixed(2);
@@ -201,9 +205,10 @@ export function renderEqualiser(ctx: EqCtx): void {
     const outer = sel.append("g").attr("transform",
         `translate(${((ctx.width - designW * s) / 2).toFixed(2)},${(ctx.titleHeight + (availH - designH * s) / 2).toFixed(2)}) scale(${s.toFixed(4)})`);
 
-    // A forced Codex mode paints its own surface, so the axis ink is derived
-    // from that surface (autoInk) rather than a swatch chosen for the old one.
-    const axisInk = hc ? fg : ((!ctx.inkOverride && ctx.axis.color) || ctx.autoInk);
+    // A forced Codex mode paints its own surface, so an axis ink left at its
+    // default is derived from that surface (autoInk); an explicit swatch is kept
+    // while it still reads on the mode's surface (#819 rule 3).
+    const axisInk = hc ? fg : forcedInk(ctx.axis.color || ctx.autoInk, ctx.autoInk, ctx.codex, !ctx.axis.color);
     if (showY) {
         const axis = outer.append("g");
         const label = axis.append("text")
@@ -266,7 +271,7 @@ export function renderEqualiser(ctx: EqCtx): void {
             const ghost = on && litHi != null && r >= litHi;
             (on ? ledG : trackG).append("rect")
                 .attr("x", x + bx).attr("y", yOf(r)).attr("width", bw).attr("height", h).attr("rx", 2)
-                .attr("fill", hc ? (on ? fg : "none") : (on ? (colc || bandOf(r)) : t.track))
+                .attr("fill", hc ? (on ? fg : "none") : (on ? (colc || bandOf(r)) : trackFill))
                 .attr("fill-opacity", ghost ? 0.28 : 1)
                 .attr("stroke", hc && !on ? fg : "none").attr("stroke-width", hc && !on ? 1 : 0);
         }
@@ -287,12 +292,14 @@ export function renderEqualiser(ctx: EqCtx): void {
             else if (!hc && t.pkGlow) p.style("filter", "drop-shadow(0 0 4px rgba(255,255,255,0.4))");
         }
 
-        // Neon flare on the lit blocks. Scope "flare" → the card's flare colour;
-        // scope "all" → the column's own hue (its spectrum colour, or the band
-        // its crest sits in). Never in high contrast.
+        // Neon flare on the lit blocks. The lit level is this column's DATA mark
+        // and its hue MEANS something — the band its crest sits in (green floor /
+        // amber shoulder / red crest), or its spectrum colour — so it glows in
+        // that hue under either scope and is never tinted by the flare colour
+        // (#819 rule 1). Never in high contrast.
         if (!hc && ctx.codex.neon && ctx.codex.glow > 0 && lit > 0) {
             const ownHue = colc || bandOf(Math.min(lit - 1, rows - 1));
-            ledG.style("filter", neonFilter(neonColorFor(ownHue, ctx.codex), ctx.codex.glow));
+            ledG.style("filter", neonFilter(ownHue, ctx.codex.glow));
         }
 
         // Axis label (board .axlab: 10.5px 600 unit ink, centred under the column).
@@ -302,7 +309,7 @@ export function renderEqualiser(ctx: EqCtx): void {
         const labelPx = (lf.size && lf.size > 0) ? lf.size : 10.5;
         const labelEl = cg.append("text")
             .attr("x", lx).attr("y", 245).attr("text-anchor", anchor)
-            .attr("fill", hc ? fg : ((!ctx.inkOverride && lf.color) || ctx.autoInk))
+            .attr("fill", hc ? fg : forcedInk(lf.color || ctx.autoInk, ctx.autoInk, ctx.codex, !lf.color))
             .style("font-family", lf.family || "Segoe UI, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif")
             .style("font-size", `${labelPx}px`)
             .style("font-weight", lf.bold ? "700" : "400")

@@ -24,7 +24,7 @@ import { surfaceTokens } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
 import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { applyBorder } from "./shared/borderSettings";
-import { resolveCodexTheme, neonColorFor, neonShadow, ResolvedCodexTheme, flareHexFor } from "./shared/codexThemeSettings";
+import { resolveCodexTheme, neonColorFor, neonShadow, forcedInk, ResolvedCodexTheme, flareHexFor } from "./shared/codexThemeSettings";
 import { renderEqualiser, EqColumn, eqTokens } from "./equaliser";
 import { LicenseGate } from "./shared/licensing";
 import { formatModelNumber } from "./shared/numberFormat";
@@ -201,11 +201,12 @@ export class Visual implements IVisual {
             });
             const theme: Theme = codex.theme;
             const surfaceHex = codex.surfaceHex;
-            // A forced mode OWNS the text inks (title, axis titles, column
-            // labels) against its own surface: a pane ink chosen for a white
-            // tile is not a choice about the Codex dark surface. Band, spectrum,
-            // border and signature colours stay the user's.
-            const inkOverride = codex.mode !== "auto";
+            // A forced mode owns the text inks (title, axis titles, column
+            // labels) that are still at their defaults, and GUARDS the ones the
+            // author set: an explicit ink survives while it reads on the mode's
+            // surface, and is replaced only when it does not (#819 rule 3,
+            // `forcedInk`). Band, spectrum, border and signature colours stay
+            // the user's.
             this.target.style.setProperty("--equaliser-focus-ink", this.isHighContrast
                 ? this.hcForeground : this.adaptiveInk(surfaceHex, "#1a1a2e"));
             this.target.style.background = this.isHighContrast
@@ -226,7 +227,7 @@ export class Visual implements IVisual {
                 muted: false,
             });
 
-            const titleHeight = this.renderTitle(theme, surfaceHex, codex, inkOverride);
+            const titleHeight = this.renderTitle(theme, surfaceHex, codex);
 
             const cols = dv ? this.parseColumns(dv) : [];
             if (cols.length === 0) {
@@ -269,7 +270,6 @@ export class Visual implements IVisual {
                 theme,
                 autoInk: this.adaptiveInk(surfaceHex, eqTokens(theme).unit),
                 codex,
-                inkOverride,
                 hc: this.isHighContrast,
                 hcFg: this.hcForeground,
                 hcBg: this.hcBackground,
@@ -502,7 +502,7 @@ export class Visual implements IVisual {
         return out;
     }
 
-    private renderTitle(theme: Theme, surfaceHex: string, codex: ResolvedCodexTheme, inkOverride: boolean): number {
+    private renderTitle(theme: Theme, surfaceHex: string, codex: ResolvedCodexTheme): number {
         const t = this.formattingSettings.titleSettings;
         if (!t?.showTitle?.value || !t?.titleText?.value) return 0;
         const el = document.createElement("div");
@@ -516,10 +516,11 @@ export class Visual implements IVisual {
         el.style.textAlign = textAlignFor(t.titleAlign?.value as string);
         const set = t.titleColor?.value?.value;
         const preferred = theme === "dark" ? surfaceTokens("dark").text : "#1a1a2e";
-        // Adapt when the mode FORCES the surface, or when the user left the ink
-        // at its default — the pane swatch still wins in Auto (#819).
-        const c = !inkOverride && set && set.toLowerCase() !== "#1a1a2e"
-            ? set : this.adaptiveInk(surfaceHex, preferred);
+        // Adapt when the user left the ink at its default; under a forced mode an
+        // explicit swatch is kept while it still reads on that mode's surface and
+        // replaced only when it does not. The pane swatch always wins in Auto (#819).
+        const isDefaultInk = !set || set.toLowerCase() === "#1a1a2e";
+        const c = forcedInk(set || preferred, this.adaptiveInk(surfaceHex, preferred), codex, isDefaultInk);
         el.style.color = this.isHighContrast ? this.hcForeground : c;
         // Neon: the title is this visual's headline, and the only text allowed
         // to flare — column and axis labels are smaller body text.
