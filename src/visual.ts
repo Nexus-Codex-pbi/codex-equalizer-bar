@@ -101,7 +101,7 @@ export class Visual implements IVisual {
 
             if (this.lastUpdateOptions) this.update(this.lastUpdateOptions);
 
-        });
+        }, "equaliser-bar");
         this.host = options.host;
         // This runtime flag is optional in hosts using the pinned API typings.
         this.allowInteractions = (options.host as IVisualHost & { allowInteractions?: boolean }).allowInteractions !== false;
@@ -152,7 +152,7 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.lastUpdateOptions = options;
 
-        if (this.licenseGate.blockedThisFrame()) {
+        if (this.licenseGate.blockedThisFrame(options.dataViews)) {
             this.target.style.display = "none";
             this.events.renderingFinished(options);
             return;
